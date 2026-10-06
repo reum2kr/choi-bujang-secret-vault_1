@@ -49,8 +49,8 @@
       <p id="auth-message" class="status" role="status" aria-live="polite"></p>
     </section>
 
-    <div class="notice">아직 서버가 로그인 여부를 확인하지 않아서 서버 함수 주소(/api/notes)를 아는 방문자는 메모를 볼 수 있습니다. 다음 제작에서 막습니다.</div>
-    <ul id="notes" aria-live="polite"><li>가상 자료를 불러오는 중입니다.</li></ul>
+    <div class="notice">서버가 로그인 토큰을 직접 검사합니다. 로그인하지 않으면 자료가 보이지 않습니다. 아직 소유자 구분은 없어서, 로그인한 사람은 모든 가상 메모를 봅니다(4단계에서 막습니다).</div>
+    <ul id="notes" aria-live="polite"><li>로그인하면 가상 자료가 보입니다.</li></ul>
   </main>
   <script type="module">
     // 공식 Supabase SDK. URL과 publishable key는 브라우저 공개용 값입니다.
@@ -109,29 +109,56 @@
       showMessage(error ? `로그아웃 실패: ${error.message}` : '로그아웃했습니다.', error ? 'error' : 'ok');
     });
 
-    supabase.auth.onAuthStateChange((_event, session) => render(session));
-    const { data: { session } } = await supabase.auth.getSession();
-    render(session);
-
-    try {
-      const response = await fetch('/api/notes', { cache: 'no-store' });
-      if (!response.ok) throw new Error('자료를 읽을 수 없습니다.');
-      const data = await response.json();
-      if (!Array.isArray(data.notes)) throw new Error('자료 형식이 맞지 않습니다.');
-      list.replaceChildren(...data.notes.map(note => {
-        const item = document.createElement('li');
-        const title = document.createElement('strong');
-        const content = document.createElement('span');
-        title.textContent = note.title;
-        content.textContent = note.content;
-        item.append(title, content);
-        return item;
-      }));
-    } catch (error) {
+    function showNotes(text) {
       const item = document.createElement('li');
-      item.textContent = error.message;
+      item.textContent = text;
       list.replaceChildren(item);
     }
+
+    // 서버에는 SDK가 준 access token만 보냅니다. userId·role 같은 값은 보내지 않습니다.
+    async function loadNotes(session) {
+      if (!session?.access_token) {
+        showNotes('로그인하면 가상 자료가 보입니다.');
+        return;
+      }
+      showNotes('가상 자료를 불러오는 중입니다.');
+      try {
+        const response = await fetch('/api/notes', {
+          cache: 'no-store',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.message ?? '자료를 읽을 수 없습니다.');
+        if (!Array.isArray(data.notes)) throw new Error('자료 형식이 맞지 않습니다.');
+        if (!data.notes.length) return showNotes('메모가 없습니다.');
+        list.replaceChildren(...data.notes.map(note => {
+          const item = document.createElement('li');
+          const title = document.createElement('strong');
+          const content = document.createElement('span');
+          title.textContent = note.title;
+          content.textContent = note.content;
+          item.append(title, content);
+          return item;
+        }));
+      } catch (error) {
+        showNotes(error.message);
+      }
+    }
+
+    let lastToken;
+    function update(session) {
+      render(session);
+      if (session?.access_token === lastToken) return;
+      lastToken = session?.access_token;
+      loadNotes(session);
+    }
+
+    supabase.auth.onAuthStateChange((_event, session) => {
+      // 콜백 안에서 다른 Supabase 호출을 기다리지 않도록 다음 틱으로 넘깁니다.
+      setTimeout(() => update(session), 0);
+    });
+    const { data: { session } } = await supabase.auth.getSession();
+    update(session);
   </script>
 </body>
 </html>
