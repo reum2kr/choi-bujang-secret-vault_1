@@ -36,7 +36,7 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">BYTE BACK · 4단계 로그인해도 내 자료만</div>
+    <div class="eyebrow">BYTE BACK · 5단계 자료 요청을 서버 한곳으로</div>
     <h1>점령된 자료실</h1>
     <p>아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
 
@@ -54,7 +54,7 @@
       <p id="auth-message" class="status" role="status" aria-live="polite"></p>
     </section>
 
-    <div class="notice">서버가 로그인 토큰을 검사하고, 메모 주인과 로그인한 사람이 같을 때만 읽기·추가·수정·삭제를 허용합니다. 데이터베이스도 RLS로 본인 행만 허용합니다.</div>
+    <div class="notice">로그인과 메모 읽기·추가·수정·삭제는 모두 이 사이트의 서버 함수만 거칩니다. 서버가 로그인 토큰과 메모 주인을 검사하고, 데이터베이스는 브라우저 키로 직접 부를 수 없게 잠가 두었습니다.</div>
 
     <section class="panel" id="editor-panel" aria-labelledby="editor-title" hidden>
       <h2 id="editor-title">가상 메모 추가</h2>
@@ -72,14 +72,9 @@
     <ul id="notes" aria-live="polite"><li>로그인하면 가상 자료가 보입니다.</li></ul>
   </main>
   <script type="module">
-    // 공식 Supabase SDK. URL과 publishable key는 브라우저 공개용 값입니다.
-    // 서버 전용 secret key는 절대 이 파일에 넣지 않습니다.
-    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
-
-    const SUPABASE_URL = 'https://yojoqbnplvwsmqaohjfr.supabase.co';
-    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_nnOsC1LS3LGw_mFyzczbew_XrF2jAoQ';
-    const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
-
+    // 5단계: 화면 코드에는 자료 저장소 주소·키·SDK가 없습니다.
+    // 로그인·로그아웃·메모 요청은 모두 같은 사이트의 Vercel 서버 함수(/api/...)만 부릅니다.
+    // access token은 메모리에만 두고, 오래 쓰는 refresh token은 서버가 httpOnly 쿠키로 관리합니다.
     const form = document.querySelector('#login-form');
     const loginButton = document.querySelector('#login-button');
     const signedIn = document.querySelector('#signed-in');
@@ -87,45 +82,75 @@
     const message = document.querySelector('#auth-message');
     const list = document.querySelector('#notes');
 
-    const reasons = {
-      invalid_credentials: '이메일 또는 비밀번호가 맞지 않습니다.',
-      email_not_confirmed: '이메일 인증이 아직 끝나지 않은 계정입니다.',
-      user_banned: '사용이 정지된 계정입니다.',
-      over_request_rate_limit: '시도가 너무 많습니다. 잠시 뒤 다시 해 주세요.',
-    };
-
     function showMessage(text, kind = '') {
       message.textContent = text;
       message.className = `status ${kind}`;
     }
 
     function render(session) {
-      const user = session?.user;
-      form.hidden = Boolean(user);
-      signedIn.hidden = !user;
-      who.textContent = user?.email ?? '';
+      form.hidden = Boolean(session);
+      signedIn.hidden = !session;
+      who.textContent = session?.email ?? '';
+    }
+
+    async function authCall(path, body) {
+      const response = await fetch(path, {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Vault-Request': '1' },
+        body: body ? JSON.stringify(body) : '{}',
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message ?? `요청이 실패했습니다 (HTTP ${response.status}).`);
+      return data;
+    }
+
+    let refreshTimer;
+    function toSession(data) {
+      return { accessToken: data.accessToken, expiresAt: data.expiresAt, email: data.email };
+    }
+    function scheduleRefresh(session) {
+      clearTimeout(refreshTimer);
+      if (!session?.expiresAt) return;
+      // 만료 1분 전에 조용히 새 access token을 받아 옵니다.
+      const wait = Math.max(10_000, session.expiresAt * 1000 - Date.now() - 60_000);
+      refreshTimer = setTimeout(() => refresh().catch(() => update(null)), wait);
+    }
+    async function refresh() {
+      const session = toSession(await authCall('/api/auth/refresh'));
+      update(session);
+      return session;
     }
 
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       loginButton.disabled = true;
       showMessage('로그인하는 중입니다…');
-      const { error } = await supabase.auth.signInWithPassword({
-        email: document.querySelector('#email').value.trim(),
-        password: document.querySelector('#password').value,
-      });
-      loginButton.disabled = false;
-      document.querySelector('#password').value = '';
-      if (error) {
-        showMessage(`로그인 실패: ${reasons[error.code] ?? error.message}`, 'error');
-        return;
+      try {
+        const data = await authCall('/api/auth/login', {
+          email: document.querySelector('#email').value.trim(),
+          password: document.querySelector('#password').value,
+        });
+        update(toSession(data));
+        showMessage('로그인했습니다.', 'ok');
+      } catch (error) {
+        showMessage(`로그인 실패: ${error.message}`, 'error');
+      } finally {
+        loginButton.disabled = false;
+        document.querySelector('#password').value = '';
       }
-      showMessage('로그인했습니다.', 'ok');
     });
 
     document.querySelector('#logout-button').addEventListener('click', async () => {
-      const { error } = await supabase.auth.signOut();
-      showMessage(error ? `로그아웃 실패: ${error.message}` : '로그아웃했습니다.', error ? 'error' : 'ok');
+      try {
+        await authCall('/api/auth/logout');
+        showMessage('로그아웃했습니다.', 'ok');
+      } catch (error) {
+        showMessage(`로그아웃 실패: ${error.message}`, 'error');
+      } finally {
+        update(null);
+      }
     });
 
     const editorPanel = document.querySelector('#editor-panel');
@@ -156,7 +181,7 @@
         ...options,
         cache: 'no-store',
         headers: {
-          Authorization: `Bearer ${currentSession?.access_token ?? ''}`,
+          Authorization: `Bearer ${currentSession?.accessToken ?? ''}`,
           ...(options.body ? { 'Content-Type': 'application/json' } : {}),
         },
       });
@@ -185,7 +210,7 @@
     }
 
     async function loadNotes() {
-      if (!currentSession?.access_token) {
+      if (!currentSession?.accessToken) {
         showNotes('로그인하면 가상 자료가 보입니다.');
         return;
       }
@@ -256,18 +281,16 @@
       currentSession = session;
       render(session);
       editorPanel.hidden = !session;
-      if (session?.access_token === lastToken) return;
-      lastToken = session?.access_token;
+      scheduleRefresh(session);
+      if (session?.accessToken === lastToken) return;
+      lastToken = session?.accessToken;
       if (!session) { resetEditor(); noteStatus(''); }
       loadNotes();
     }
 
-    supabase.auth.onAuthStateChange((_event, session) => {
-      // 콜백 안에서 다른 Supabase 호출을 기다리지 않도록 다음 틱으로 넘깁니다.
-      setTimeout(() => update(session), 0);
-    });
-    const { data: { session } } = await supabase.auth.getSession();
-    update(session);
+    // 새로고침 뒤에도 로그인을 이어 갑니다(쿠키가 없으면 로그아웃 상태).
+    update(null);
+    refresh().catch(() => {});
   </script>
 </body>
 </html>
