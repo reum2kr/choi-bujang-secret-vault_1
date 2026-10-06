@@ -84,3 +84,22 @@
 - `step` 3. `identityProvider`, `allowedRoutes`(GET·POST `/api/notes`, GET·PUT·DELETE `/api/notes/:id`)를 구현과 맞췄습니다. 원본 API 주소는 5단계 항목이라 비워 둡니다.
 - `src/attack-check.mjs`의 3단계 점검: 비로그인 `/data.json`, 비로그인 `/api/notes`, 위조 토큰 `/api/notes`를 실제로 요청해 결과만 기록합니다. A의 추가·수정·삭제와 B의 타인 메모 접근은 비밀번호를 코드에 넣지 않으므로 미실행으로 남깁니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: Supabase SQL Editor에서 `supabase/notes.sql` → `supabase/03-notes-uuid.sql` 순서로 실행하고, Authentication에서 테스트 계정을 만든 뒤 Vercel 환경변수 `SUPABASE_URL`·`SUPABASE_SECRET_KEY`를 넣고 main에 push합니다. 제출 묶음은 Codespaces 등에서 `git pull` → `npm ci` → `bundle-notes.json` 작성 → `npm run bundle`.
+
+## 4단계 기록: 로그인해도 내 자료만
+
+- 소유자 연결: `supabase/04-owners.sql`로 기존 가상 메모 세 건은 A, 남은 한 건은 B의 시험 메모로 owner_id를 연결했습니다. 이메일은 공개 저장소에 남기지 않도록 `<A_EMAIL>`·`<B_EMAIL>` 자리표시자로 두고 SQL Editor에서만 채웠습니다.
+- API 소유자 검사(`api/notes/[id].js`): 토큰으로 확인한 사용자 ID와 DB의 owner_id를 비교합니다. 남의 메모 GET·PUT·DELETE는 없는 메모와 똑같이 404로 거부해 존재 여부도 알려 주지 않습니다. 수정은 기존 행과 새 행의 소유자가 모두 본인이어야 하고, 본문으로 owner_id를 다른 사람으로 바꾸려 하면 403입니다. URL·쿼리·본문의 owner_id는 믿지 않고, 추가는 확인된 ID로 저장합니다.
+- DB 권한(`supabase/04-rls.sql`): `REVOKE ALL … FROM PUBLIC, anon, authenticated` 뒤 authenticated에만 SELECT·INSERT·UPDATE·DELETE를 GRANT했습니다. 정책은 SELECT·DELETE USING, INSERT WITH CHECK, UPDATE USING+WITH CHECK 모두 `auth.uid() = owner_id`입니다. 서버 함수가 쓰는 service_role 권한은 그대로입니다.
+- 적용 전후 `has_table_privilege` 대조: 전 anon 없음·authenticated 없음 → 후 anon 없음·authenticated SELECT, INSERT, UPDATE, DELETE.
+
+### 아직 남은 약점과 한계
+
+- 앱 API는 RLS를 우회하는 서버 전용 키로 DB를 읽으므로, A/B 구분은 API의 소유자 검사가 지킵니다. RLS는 Data API를 직접 부르는 경우의 두 번째 방어선입니다.
+- authenticated 역할로 Data API를 직접 부르는 경우는 심판이 재현할 수 없어 점수에서 제외되며, 이 저장소의 자동 점검도 anon 키 직접 조회만 확인합니다.
+- 옛 커밋·옛 배포의 과거 노출은 2단계 기록과 같이 해소되지 않았습니다.
+
+## 4단계 저장점
+
+- `step` 4. `identityProvider`, `allowedRoutes`(GET·POST `/api/notes`, GET·PUT·DELETE `/api/notes/:id`)는 구현과 같습니다.
+- `src/attack-check.mjs`의 4단계 점검: 비로그인·위조 토큰 `/api/notes`, anon(publishable) 키로 Supabase Data API `notes` 직접 조회를 실제로 요청해 결과만 기록합니다. B의 타인 메모 접근과 소유자 변경은 계정 비밀번호를 코드에 넣지 않으므로 미실행이며, 화면에서 직접 확인합니다. 심판 판정이 아닙니다.
+- 다시 실행하는 방법: SQL Editor에서 `notes.sql` → `03-notes-uuid.sql` → `04-owners.sql`(이메일 채워서) → `04-rls.sql` 순서로 실행하고, main에 push합니다. 제출 묶음은 Codespaces에서 `git pull` → `npm ci` → `bundle-notes.json` 작성 → `npm run bundle`.

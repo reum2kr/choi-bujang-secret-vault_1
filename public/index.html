@@ -36,7 +36,7 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">BYTE BACK · 3단계 진짜 로그인을 붙입니다</div>
+    <div class="eyebrow">BYTE BACK · 4단계 로그인해도 내 자료만</div>
     <h1>점령된 자료실</h1>
     <p>아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
 
@@ -54,7 +54,7 @@
       <p id="auth-message" class="status" role="status" aria-live="polite"></p>
     </section>
 
-    <div class="notice">서버가 로그인 토큰을 직접 검사합니다. 로그인하지 않으면 자료가 보이지 않습니다. 아직 소유자 검사는 없어서, 다른 계정도 메모 id를 알면 읽고·고치고·지울 수 있습니다(4단계에서 막습니다).</div>
+    <div class="notice">서버가 로그인 토큰을 검사하고, 메모 주인과 로그인한 사람이 같을 때만 읽기·추가·수정·삭제를 허용합니다. 데이터베이스도 RLS로 본인 행만 허용합니다.</div>
 
     <section class="panel" id="editor-panel" aria-labelledby="editor-title" hidden>
       <h2 id="editor-title">가상 메모 추가</h2>
