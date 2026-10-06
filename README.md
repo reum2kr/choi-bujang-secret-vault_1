@@ -62,3 +62,25 @@
 - `aleph.config.json`: `step` 2, 실제 저장소·배포 주소를 넣었습니다. 로그인 발급자·허용 경로·원본 API 주소는 아직 해당 단계가 아니어서 비워 둡니다.
 - `src/attack-check.mjs`: 2단계에서는 비로그인 `/data.json`(메모가 없어야 함)과 비로그인 `/api/notes`(아직 열려 있는 약점)를 실제로 요청해 결과만 기록합니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: Vercel 환경변수 `SUPABASE_URL`·`SUPABASE_SECRET_KEY`를 넣고 main에 push하면 자동 배포됩니다. 제출 묶음은 git·Node 22가 있는 곳(로컬 또는 Codespaces)에서 `npm ci` 뒤 `bundle-notes.json`을 만들고 `npm run bundle`로 만듭니다. `bundle-notes.json`과 `artifacts/`는 커밋하지 않습니다.
+
+## 3단계 기록: 진짜 로그인을 붙임
+
+- 첫 화면에 Supabase Auth 이메일·비밀번호 로그인·로그아웃을 붙였습니다(공식 SDK, 공개용 URL·publishable key만 화면 코드에 있음). 로그인 실패 이유를 화면에 보여 줍니다.
+- 자료 API는 시작 틀의 `src/verify-login.mjs`로 토큰을 검사합니다(도우미는 고치지 않음). 브라우저가 보낸 userId·role·owner_id는 믿지 않습니다. 토큰이 없거나 검사에 실패하면 메모 없이 `401 {"error":"LOGIN_REQUIRED"}`를 돌려줍니다.
+- `aleph.config.json`의 `identityProvider`에 Supabase 발급자·대상·공개키 주소를 적었습니다(비밀 키 없음).
+- 메모 API (`api/notes/index.js`, `api/notes/[id].js`, 공통 `lib/notes-server.mjs`)
+  - `GET /api/notes`: 로그인 사용자(owner_id)의 메모 배열 `[{id,title,body}]`
+  - `POST /api/notes`: `{id?, title, body}` → `201 {id}` (id는 UUID, 없으면 서버가 만듦). owner_id는 서버가 확인한 사용자 ID로 저장
+  - `GET·PUT·DELETE /api/notes/:id`: 한 건 `{id,title,body}`, 없으면 404, 지운 뒤 GET도 404
+- 테이블 변경 SQL은 `supabase/03-notes-uuid.sql`(id를 UUID로, content를 body로)입니다. 2단계에서 넣은 가상 메모 네 건은 owner_id가 비어 있어 로그인 사용자 목록에는 나오지 않습니다.
+
+### 아직 남은 약점
+
+- **소유자 검사가 없습니다.** 로그인만 하면 다른 사람 메모의 id를 알 때 읽기·수정·삭제가 됩니다(B가 A의 메모를 고칠 수 있음). 4단계에서 막고 기록합니다.
+- 옛 커밋·옛 배포에 남은 과거 노출은 2단계 기록과 같이 해소되지 않았습니다.
+
+## 3단계 저장점
+
+- `step` 3. `identityProvider`, `allowedRoutes`(GET·POST `/api/notes`, GET·PUT·DELETE `/api/notes/:id`)를 구현과 맞췄습니다. 원본 API 주소는 5단계 항목이라 비워 둡니다.
+- `src/attack-check.mjs`의 3단계 점검: 비로그인 `/data.json`, 비로그인 `/api/notes`, 위조 토큰 `/api/notes`를 실제로 요청해 결과만 기록합니다. A의 추가·수정·삭제와 B의 타인 메모 접근은 비밀번호를 코드에 넣지 않으므로 미실행으로 남깁니다. 심판 판정이 아닙니다.
+- 다시 실행하는 방법: Supabase SQL Editor에서 `supabase/notes.sql` → `supabase/03-notes-uuid.sql` 순서로 실행하고, Authentication에서 테스트 계정을 만든 뒤 Vercel 환경변수 `SUPABASE_URL`·`SUPABASE_SECRET_KEY`를 넣고 main에 push합니다. 제출 묶음은 Codespaces 등에서 `git pull` → `npm ci` → `bundle-notes.json` 작성 → `npm run bundle`.
