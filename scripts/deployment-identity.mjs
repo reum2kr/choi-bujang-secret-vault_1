@@ -2,6 +2,8 @@ const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/u;
 const REPO = /^[A-Za-z0-9._-]{1,100}$/u;
 const SHA = /^[a-f0-9]{40}$/iu;
 const HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.vercel\.app$/iu;
+// "GET /api/notes/:id" 같은 메서드+경로만 공개합니다. 키·토큰 같은 값은 들어갈 수 없습니다.
+const ROUTE = /^(GET|POST|PUT|PATCH|DELETE) \/[A-Za-z0-9/:._-]{0,120}$/u;
 
 export function deploymentIdentity(env, config) {
   const owner = env.VERCEL_GIT_REPO_OWNER;
@@ -26,5 +28,9 @@ export function deploymentIdentity(env, config) {
     publicAppUrl: `https://${host.toLowerCase()}`,
     judgeIssuer: config.judgeIssuer,
     sampleMarker: config.sampleMarker,
+    // 3단계부터 aleph.config.json의 허용 경로를 그대로 공개합니다(비어 있으면 넣지 않음).
+    ...(Array.isArray(config.allowedRoutes) && config.allowedRoutes.length
+      ? { allowedRoutes: config.allowedRoutes.filter((route) => typeof route === 'string' && ROUTE.test(route)) }
+      : {}),
   };
 }
