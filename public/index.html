@@ -23,6 +23,11 @@
     .error { color: #ffb4c0; }
     .ok { color: #9fe3b0; }
     [hidden] { display: none !important; }
+    textarea { font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid #51667c; background: #0d1622; color: #ecf4ff; min-height: 80px; resize: vertical; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .ghost { background: transparent; color: #8ad8df; border: 1px solid #8ad8df; }
+    .danger { background: transparent; color: #ffb4c0; border: 1px solid #ffb4c0; }
+    li span { white-space: pre-wrap; }
     ul { list-style: none; display: grid; gap: 12px; padding: 0; }
     li { border: 1px solid #51667c; border-radius: 14px; padding: 17px 19px; background: #1a2a3d; }
     strong { display: block; font-size: 18px; margin-bottom: 5px; }
@@ -49,7 +54,21 @@
       <p id="auth-message" class="status" role="status" aria-live="polite"></p>
     </section>
 
-    <div class="notice">서버가 로그인 토큰을 직접 검사합니다. 로그인하지 않으면 자료가 보이지 않습니다. 아직 소유자 구분은 없어서, 로그인한 사람은 모든 가상 메모를 봅니다(4단계에서 막습니다).</div>
+    <div class="notice">서버가 로그인 토큰을 직접 검사합니다. 로그인하지 않으면 자료가 보이지 않습니다. 아직 소유자 검사는 없어서, 다른 계정도 메모 id를 알면 읽고·고치고·지울 수 있습니다(4단계에서 막습니다).</div>
+
+    <section class="panel" id="editor-panel" aria-labelledby="editor-title" hidden>
+      <h2 id="editor-title">가상 메모 추가</h2>
+      <form id="note-form">
+        <label>제목 <input id="note-title" maxlength="100" required></label>
+        <label>내용 <textarea id="note-body" maxlength="2000"></textarea></label>
+        <div class="row">
+          <button id="save-button" type="submit">추가</button>
+          <button id="cancel-edit" class="ghost" type="button" hidden>수정 취소</button>
+        </div>
+      </form>
+      <p id="note-message" class="status" role="status" aria-live="polite"></p>
+    </section>
+
     <ul id="notes" aria-live="polite"><li>로그인하면 가상 자료가 보입니다.</li></ul>
   </main>
   <script type="module">
@@ -109,35 +128,100 @@
       showMessage(error ? `로그아웃 실패: ${error.message}` : '로그아웃했습니다.', error ? 'error' : 'ok');
     });
 
+    const editorPanel = document.querySelector('#editor-panel');
+    const noteForm = document.querySelector('#note-form');
+    const noteTitle = document.querySelector('#note-title');
+    const noteBody = document.querySelector('#note-body');
+    const saveButton = document.querySelector('#save-button');
+    const cancelEdit = document.querySelector('#cancel-edit');
+    const editorTitle = document.querySelector('#editor-title');
+    const noteMessage = document.querySelector('#note-message');
+    let currentSession = null;
+    let editingId = null;
+
     function showNotes(text) {
       const item = document.createElement('li');
       item.textContent = text;
       list.replaceChildren(item);
     }
 
-    // 서버에는 SDK가 준 access token만 보냅니다. userId·role 같은 값은 보내지 않습니다.
-    async function loadNotes(session) {
-      if (!session?.access_token) {
+    function noteStatus(text, kind = '') {
+      noteMessage.textContent = text;
+      noteMessage.className = `status ${kind}`;
+    }
+
+    // 서버에는 SDK가 준 access token만 보냅니다. userId·role·owner_id 같은 값은 보내지 않습니다.
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        cache: 'no-store',
+        headers: {
+          Authorization: `Bearer ${currentSession?.access_token ?? ''}`,
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message ?? `요청이 실패했습니다 (HTTP ${response.status}).`);
+      return data;
+    }
+
+    function resetEditor() {
+      editingId = null;
+      noteForm.reset();
+      editorTitle.textContent = '가상 메모 추가';
+      saveButton.textContent = '추가';
+      cancelEdit.hidden = true;
+    }
+
+    function startEdit(note) {
+      editingId = note.id;
+      noteTitle.value = note.title;
+      noteBody.value = note.body ?? '';
+      editorTitle.textContent = '가상 메모 수정';
+      saveButton.textContent = '수정 저장';
+      cancelEdit.hidden = false;
+      noteStatus('');
+      noteTitle.focus();
+    }
+
+    async function loadNotes() {
+      if (!currentSession?.access_token) {
         showNotes('로그인하면 가상 자료가 보입니다.');
         return;
       }
-      showNotes('가상 자료를 불러오는 중입니다.');
       try {
-        const response = await fetch('/api/notes', {
-          cache: 'no-store',
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.message ?? '자료를 읽을 수 없습니다.');
-        if (!Array.isArray(data.notes)) throw new Error('자료 형식이 맞지 않습니다.');
-        if (!data.notes.length) return showNotes('메모가 없습니다.');
-        list.replaceChildren(...data.notes.map(note => {
+        const notes = await api('/api/notes');
+        if (!Array.isArray(notes)) throw new Error('자료 형식이 맞지 않습니다.');
+        if (!notes.length) return showNotes('내 메모가 없습니다. 위에서 가상 메모를 추가해 보세요.');
+        list.replaceChildren(...notes.map(note => {
           const item = document.createElement('li');
           const title = document.createElement('strong');
           const content = document.createElement('span');
+          const row = document.createElement('div');
+          const edit = document.createElement('button');
+          const remove = document.createElement('button');
           title.textContent = note.title;
-          content.textContent = note.content;
-          item.append(title, content);
+          content.textContent = note.body;
+          row.className = 'row';
+          edit.type = remove.type = 'button';
+          edit.className = 'ghost';
+          remove.className = 'danger';
+          edit.textContent = '수정';
+          remove.textContent = '삭제';
+          edit.addEventListener('click', () => startEdit(note));
+          remove.addEventListener('click', async () => {
+            if (!confirm(`「${note.title}」 메모를 삭제할까요?`)) return;
+            try {
+              await api(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
+              if (editingId === note.id) resetEditor();
+              noteStatus('삭제했습니다.', 'ok');
+              await loadNotes();
+            } catch (error) {
+              noteStatus(`삭제 실패: ${error.message}`, 'error');
+            }
+          });
+          row.append(edit, remove);
+          item.append(title, content, row);
           return item;
         }));
       } catch (error) {
@@ -145,12 +229,37 @@
       }
     }
 
+    noteForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      saveButton.disabled = true;
+      const payload = JSON.stringify({ title: noteTitle.value, body: noteBody.value });
+      try {
+        if (editingId) {
+          await api(`/api/notes/${encodeURIComponent(editingId)}`, { method: 'PUT', body: payload });
+          noteStatus('수정했습니다.', 'ok');
+        } else {
+          await api('/api/notes', { method: 'POST', body: payload });
+          noteStatus('추가했습니다.', 'ok');
+        }
+        resetEditor();
+        await loadNotes();
+      } catch (error) {
+        noteStatus(`저장 실패: ${error.message}`, 'error');
+      } finally {
+        saveButton.disabled = false;
+      }
+    });
+    cancelEdit.addEventListener('click', () => { resetEditor(); noteStatus(''); });
+
     let lastToken;
     function update(session) {
+      currentSession = session;
       render(session);
+      editorPanel.hidden = !session;
       if (session?.access_token === lastToken) return;
       lastToken = session?.access_token;
-      loadNotes(session);
+      if (!session) { resetEditor(); noteStatus(''); }
+      loadNotes();
     }
 
     supabase.auth.onAuthStateChange((_event, session) => {
