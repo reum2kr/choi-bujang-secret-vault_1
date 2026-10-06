@@ -23,3 +23,13 @@
 [AGENTS.md](AGENTS.md)를 먼저 읽히고 한 번에 한 제작 단위만 요청하세요. 2단계부터는 자료 보호를 구현할 때 `public/data.json`을 복사하는 1단계 빌드 흐름도 함께 바꿔야 합니다. 3단계 이후의 로그인, 허용 경로, 5단계의 원본 API 주소, 6단계 이후 정책 규칙은 해당 단계 원고와 계약에 맞춰 추가합니다. 비밀번호·토큰·서버 전용 키·실제 학생 기록을 코드, Git, 제출 묶음에 넣지 않습니다.
 
 `src/decider.mjs`와 `src/detect.mjs`의 로컬 시험은 반 엔진이나 운영 심판의 결과가 아닙니다. 1단계 이후 제출 묶음 계약 `aleph.defense.submission.v2`는 `scripts/bundle.mjs`에 남아 있으며, 코딩 도구가 해당 단계의 최신 배포 주소와 Git 원격을 맞춘 뒤 사용합니다.
+
+## 2단계 기록: 자료를 코드 밖으로 옮김
+
+- 가상 메모 네 건은 학습용 Supabase 테이블 `public.notes`로 옮겼습니다. 테이블 정의와 넣는 SQL은 `supabase/notes.sql`에 있습니다. `owner_id uuid` 칸은 3단계 로그인용 자리이고, RLS는 켜져 있으며 `anon`·`authenticated` 권한은 회수했습니다.
+- 빌드는 더 이상 `public/data.json`을 만들지 않습니다. 루트 `data.json`의 메모도 비웠습니다. `/aleph.json` 생성은 그대로 유지합니다.
+- 화면은 `api/notes.js` 서버 함수(`/api/notes`)를 통해 메모를 읽습니다. 함수는 Vercel 환경변수 `SUPABASE_URL`과 서버 전용 `SUPABASE_SECRET_KEY`를 읽고, 키는 브라우저 파일·응답·로그에 넣지 않습니다. 두 값은 Vercel → Settings → Environment Variables에 직접 넣고 다시 배포합니다.
+
+### 아직 남은 약점
+
+- **서버 함수 주소는 공개돼 있습니다.** 로그인 확인이 없으므로 `/api/notes` 주소를 아는 사람은 누구나 가상 메모를 읽을 수 있습니다. 키를 숨긴 것이지 접근을 막은 것은 아닙니다. 3단계 로그인에서 막아야 합니다.
