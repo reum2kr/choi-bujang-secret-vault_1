@@ -55,3 +55,10 @@
 - 옛 공개 커밋(`657b56a`, `0ca0dc9`, `662a2d3` 등)에는 메모 문장이 그대로 남아 있습니다. 저장소가 공개인 한 누구나 History에서 볼 수 있습니다.
 - 1단계의 옛 배포(미리보기 주소 포함)도 Vercel에 남아 있는 동안에는 옛 `/data.json`을 내줄 수 있습니다.
 - 이미 공개된 동안 누군가 복사해 갔을 수도 있습니다. 최신 파일에서 지운 것은 **앞으로의 노출을 줄인 것**이지 과거 노출을 없앤 것이 아닙니다. 실제 자료였다면 내용 변경·관련자 통지·이력 정리까지 따로 검토해야 합니다.
+
+## 2단계 저장점
+
+- 현재 작동: 첫 화면은 `/api/notes` 서버 함수로 가상 메모 네 건을 보여 줍니다. `/data.json`은 404이고, `/aleph.json`은 빌드할 때 계속 생성됩니다. 모든 경로에 `X-Content-Type-Options: nosniff` 등 보안 헤더가 붙습니다.
+- `aleph.config.json`: `step` 2, 실제 저장소·배포 주소를 넣었습니다. 로그인 발급자·허용 경로·원본 API 주소는 아직 해당 단계가 아니어서 비워 둡니다.
+- `src/attack-check.mjs`: 2단계에서는 비로그인 `/data.json`(메모가 없어야 함)과 비로그인 `/api/notes`(아직 열려 있는 약점)를 실제로 요청해 결과만 기록합니다. 심판 판정이 아닙니다.
+- 다시 실행하는 방법: Vercel 환경변수 `SUPABASE_URL`·`SUPABASE_SECRET_KEY`를 넣고 main에 push하면 자동 배포됩니다. 제출 묶음은 git·Node 22가 있는 곳(로컬 또는 Codespaces)에서 `npm ci` 뒤 `bundle-notes.json`을 만들고 `npm run bundle`로 만듭니다. `bundle-notes.json`과 `artifacts/`는 커밋하지 않습니다.
