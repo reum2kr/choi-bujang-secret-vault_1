@@ -103,3 +103,23 @@
 - `step` 4. `identityProvider`, `allowedRoutes`(GET·POST `/api/notes`, GET·PUT·DELETE `/api/notes/:id`)는 구현과 같습니다.
 - `src/attack-check.mjs`의 4단계 점검: 비로그인·위조 토큰 `/api/notes`, anon(publishable) 키로 Supabase Data API `notes` 직접 조회를 실제로 요청해 결과만 기록합니다. B의 타인 메모 접근과 소유자 변경은 계정 비밀번호를 코드에 넣지 않으므로 미실행이며, 화면에서 직접 확인합니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: SQL Editor에서 `notes.sql` → `03-notes-uuid.sql` → `04-owners.sql`(이메일 채워서) → `04-rls.sql` 순서로 실행하고, main에 push합니다. 제출 묶음은 Codespaces에서 `git pull` → `npm ci` → `bundle-notes.json` 작성 → `npm run bundle`.
+
+## 5단계 기록: 자료 요청을 서버 한곳으로
+
+- 제작 1 점검: 브라우저 코드(`public/index.html`)에서 메모 자료를 Supabase에 직접 읽거나 고치는 호출은 없었습니다(로그인 Auth 호출만 있었음). 파일 변경 없음.
+- 제작 2 DB 권한(`supabase/05-revoke-direct.sql`): `notes` 테이블에서 PUBLIC·anon·authenticated의 직접 권한을 모두 거뒀습니다. 서버 함수용 service_role 권한과 RLS(켜짐)는 유지합니다. 적용 전후 `has_table_privilege`: 전 anon 없음·authenticated SELECT, INSERT, UPDATE, DELETE → 후 anon 없음·authenticated 없음.
+- `aleph.config.json`의 `originalApiUrl`: 쿼리 없는 원본 자료 경로 `https://yojoqbnplvwsmqaohjfr.supabase.co/rest/v1/notes`. 공개 키로 직접 불러도 권한이 없어 메모가 나오지 않습니다.
+- 추가: 로그인·로그인 유지·로그아웃도 서버 함수로 옮겼습니다(`api/auth/login.js`, `refresh.js`, `logout.js`, 공통 `lib/auth-server.mjs`). 화면 코드에는 자료 저장소 주소·공개 키·SDK가 없고, 브라우저는 같은 사이트의 `/api/...`만 부릅니다. access token은 화면 메모리에만 두고, refresh token은 `HttpOnly; Secure; SameSite=Strict` 쿠키(`Path=/api/auth`)로만 다룹니다. 로그인 관련 POST는 `X-Vault-Request: 1` 헤더가 있어야 받습니다.
+- 서버 함수의 로그인 검사(`verify-login`)·소유자 검사와 서버 전용 설정(`SUPABASE_URL`, `SUPABASE_SECRET_KEY`)은 그대로입니다.
+
+### 아직 남은 약점과 한계
+
+- 모든 자료 접근이 서버 전용 키를 쓰는 서버 함수 한곳에 모였으므로, 그 키가 새면 피해가 큽니다. 키는 Vercel 환경변수에만 두고, 노출되면 즉시 새 키로 바꾼 뒤 옛 키를 지웁니다(3단계에서 한 번 교체함).
+- 로그인 시도 횟수 제한은 Supabase Auth의 기본 제한에 의존합니다.
+- 옛 커밋·옛 배포의 과거 노출은 해소되지 않았습니다.
+
+## 5단계 저장점
+
+- `step` 5. `identityProvider`, `allowedRoutes`(자료 API 5개), `originalApiUrl`을 구현과 맞췄습니다.
+- `src/attack-check.mjs`의 5단계 점검: 비로그인·위조 토큰 `/api/notes`, anon 키로 `originalApiUrl` 직접 조회, 첫 화면 코드의 저장소 주소·키 문자열 검사를 실제 요청으로 기록합니다. B의 타인 메모 접근은 미실행(화면에서 직접 확인)입니다. 심판 판정이 아닙니다.
+- 다시 실행하는 방법: SQL Editor에서 `notes.sql` → `03-notes-uuid.sql` → `04-owners.sql`(이메일 채워서) → `04-rls.sql` → `05-revoke-direct.sql` 순서로 실행하고 main에 push합니다. 제출 묶음은 Codespaces에서 `git pull` → `npm ci` → `bundle-notes.json` 작성 → `npm run bundle`.
