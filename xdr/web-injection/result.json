@@ -1,0 +1,167 @@
+{
+  "schema": "aleph.xdr.result.v1",
+  "moduleKey": "web-injection",
+  "decisions": [
+    {
+      "alertId": "wi-01",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + sql_injection_in_params: 주입 표기 12번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-02",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "repeated_injection_same_source + script_injection_in_params: 주입 표기 9번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-03",
+      "action": "block",
+      "confidence": 0.9,
+      "reason": "repeated_injection_same_source + path_traversal_repeat: 주입 표기 8번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-04",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + sql_injection_in_params: 주입 표기 20번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-05",
+      "action": "block",
+      "confidence": 0.96,
+      "reason": "repeated_injection_same_source + sql_injection_in_params + script_injection_in_params: 주입 표기 15번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-06",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + command_injection_in_params: 주입 표기 11번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-07",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + path_traversal_repeat: 주입 표기 14번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-08",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + sql_injection_in_params: 주입 표기 10번 반복 (T1190)"
+    },
+    {
+      "alertId": "wi-09",
+      "action": "alert",
+      "confidence": 0.56,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-10",
+      "action": "alert",
+      "confidence": 0.53,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-11",
+      "action": "alert",
+      "confidence": 0.59,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-12",
+      "action": "alert",
+      "confidence": 0.56,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-13",
+      "action": "alert",
+      "confidence": 0.53,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-14",
+      "action": "alert",
+      "confidence": 0.59,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-15",
+      "action": "alert",
+      "confidence": 0.56,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-16",
+      "action": "alert",
+      "confidence": 0.62,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-17",
+      "action": "alert",
+      "confidence": 0.56,
+      "reason": "repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만"
+    },
+    {
+      "alertId": "wi-18",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-19",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-20",
+      "action": "record",
+      "confidence": 0.09,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-21",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-22",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-23",
+      "action": "record",
+      "confidence": 0.09,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-24",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-25",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    },
+    {
+      "alertId": "wi-26",
+      "action": "record",
+      "confidence": 0.09,
+      "reason": "none: 주입 표기나 웹 악용 의심 표시가 없는 정상 요청"
+    }
+  ],
+  "counts": {
+    "block": 8,
+    "alert": 9,
+    "record": 9
+  }
+}

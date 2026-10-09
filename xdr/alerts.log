@@ -17,3 +17,20 @@
 2026-10-09T15:34:28.530Z ALERT bf-17 src=192.0.2.52 conf=0.58 low_volume_failures: 실패 4건 — 오타일 수도 있어 알림만 (T1110)
 2026-10-09T15:34:28.530Z ALERT bf-18 src=198.51.100.52 conf=0.67 low_volume_failures: 실패 8건 — 오타일 수도 있어 알림만 (T1110)
 2026-10-09T15:34:28.530Z ALERT bf-19 src=203.0.113.52 conf=0.6 low_volume_failures: 실패 3건 — 오타일 수도 있어 알림만 (T1110)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-01 src=203.0.113.10 path=/notes conf=0.93 repeated_injection_same_source + sql_injection_in_params: 주입 표기 12번 반복 (T1190)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-02 src=203.0.113.10 path=/search conf=0.9 repeated_injection_same_source + script_injection_in_params: 주입 표기 9번 반복 (T1190)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-03 src=198.51.100.15 path=/files conf=0.9 repeated_injection_same_source + path_traversal_repeat: 주입 표기 8번 반복 (T1190)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-04 src=192.0.2.15 path=/notes conf=0.93 repeated_injection_same_source + sql_injection_in_params: 주입 표기 20번 반복 (T1190)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-05 src=203.0.113.18 path=/search conf=0.96 repeated_injection_same_source + sql_injection_in_params + script_injection_in_params: 주입 표기 15번 반복 (T1190)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-06 src=198.51.100.18 path=/notes conf=0.93 repeated_injection_same_source + command_injection_in_params: 주입 표기 11번 반복 (T1190)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-07 src=192.0.2.21 path=/files conf=0.93 repeated_injection_same_source + path_traversal_repeat: 주입 표기 14번 반복 (T1190)
+2026-10-09T15:42:16.515Z BLOCK web-injection wi-08 src=203.0.113.22 path=/api/notes conf=0.93 repeated_injection_same_source + sql_injection_in_params: 주입 표기 10번 반복 (T1190)
+2026-10-09T15:42:16.515Z ALERT web-injection wi-09 src=192.0.2.40 path=/search conf=0.56 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-10 src=198.51.100.40 path=/search conf=0.53 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-11 src=203.0.113.41 path=/search conf=0.59 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-12 src=192.0.2.41 path=/files conf=0.56 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-13 src=198.51.100.41 path=/notes conf=0.53 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-14 src=203.0.113.42 path=/search conf=0.59 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-15 src=192.0.2.42 path=/search conf=0.56 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-16 src=198.51.100.42 path=/notes conf=0.62 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-09T15:42:16.515Z ALERT web-injection wi-17 src=203.0.113.43 path=/search conf=0.56 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만

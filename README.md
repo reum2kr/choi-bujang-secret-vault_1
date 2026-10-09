@@ -137,3 +137,13 @@
 
 - 현재 판정기 요청 계약(`docs/DECIDER_REQUEST.md`)에는 출발 주소 항목이 없어서, 거부 규칙을 실제 접속 판정에 바로 적용할 수는 없습니다. 운영 엔진이 주소를 계약에 넣어 줄 때 `isDenied`를 판정기 앞 단계로 연결합니다.
 - 판단은 경보에 적힌 건수·계정 수·설명에 기대므로, 경보 형식이 크게 바뀌면 패턴 조건을 다시 맞춰야 합니다.
+
+## 보너스 xdr-02: 웹 주입 공격을 잡아 냄
+
+- 판정기 위치는 xdr-01과 같습니다(`src/decider.mjs`의 `RULE_IDS`, 현재 `starter.deny`). 판정기 규칙은 고치지 않고 확인 단계 부품만 더합니다.
+- `xdr/web-injection/read-alerts.mjs`(제작 1): 시각·출발 주소·계정·규칙 수준·설명만 뽑고 비밀값처럼 보이는 문자열은 `[가림]`. 경보 26건 = 뽑은 줄 26줄. `decide.mjs`는 이 파일을 불러오지 않습니다.
+- `xdr/web-injection/patterns.json`(제작 2): MITRE ATT&CK T1190 근거 패턴 다섯 개(`sql_injection_in_params`, `script_injection_in_params`, `path_traversal_repeat`, `command_injection_in_params`, `repeated_injection_same_source`).
+- `xdr/web-injection/decide.mjs`(제작 3): 패턴 상수 + `decide(alert)`. import·파일 입출력·네트워크 없음. 요청 인자를 두 번까지 URL 디코딩해 실제 주입 모양과 수업용 문서 표기(`doc-…`)를 함께 보고, 같은 주소에서 5번 이상 반복되면 block, 한 번뿐이면 alert, T1190 표시도 주입 표기도 없으면 record.
+- `xdr/web-injection/respond.mjs`(제작 4): block 후보만 `xdr/web-injection/deny-rules.json` 거부 규칙(주소당 하나, 1시간 만료, 근거 경보 번호)으로 넣고 block·alert를 `xdr/alerts.log`에 쌓습니다. 로그에는 주입 문자열이 남지 않도록 요청 경로만 적고 쿼리는 버립니다. 같은 묶음에 정상 이벤트가 있는 주소와 내부 대역은 막지 않습니다.
+- 결과(제작 5): `npm run xdr:run -- web-injection` → block 8 · alert 9 · record 9, 정상 이벤트를 block한 경우 0건. 다시 흘리기 → 거부 규칙 7개(주소 7곳), 정상·애매 주소를 막은 경우 0건.
+- 한계: xdr-01과 같이 판정기 요청에 출발 주소가 없어 거부 규칙은 별도 파일과 `isDenied` 확인 단계로 둡니다. 한 번뿐인 주입 시도는 일부러 막지 않고 알림만 남기므로, 반복이 적은 정밀 공격은 사람이 알림을 보고 판단해야 합니다.

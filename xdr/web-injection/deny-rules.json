@@ -1,0 +1,106 @@
+{
+  "schema": "aleph.xdr.deny-rules.v1",
+  "moduleKey": "web-injection",
+  "generatedAt": "2026-10-09T15:42:16.515Z",
+  "rules": [
+    {
+      "ruleId": "xdr.web_injection.deny_source.203_0_113_10",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.10"
+      },
+      "createdAt": "2026-10-09T15:42:16.515Z",
+      "expiresAt": "2026-10-09T16:42:16.515Z",
+      "alertIds": [
+        "wi-01",
+        "wi-02"
+      ],
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + sql_injection_in_params: 주입 표기 12번 반복 (T1190)"
+    },
+    {
+      "ruleId": "xdr.web_injection.deny_source.198_51_100_15",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.15"
+      },
+      "createdAt": "2026-10-09T15:42:16.515Z",
+      "expiresAt": "2026-10-09T16:42:16.515Z",
+      "alertIds": [
+        "wi-03"
+      ],
+      "confidence": 0.9,
+      "reason": "repeated_injection_same_source + path_traversal_repeat: 주입 표기 8번 반복 (T1190)"
+    },
+    {
+      "ruleId": "xdr.web_injection.deny_source.192_0_2_15",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.15"
+      },
+      "createdAt": "2026-10-09T15:42:16.515Z",
+      "expiresAt": "2026-10-09T16:42:16.515Z",
+      "alertIds": [
+        "wi-04"
+      ],
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + sql_injection_in_params: 주입 표기 20번 반복 (T1190)"
+    },
+    {
+      "ruleId": "xdr.web_injection.deny_source.203_0_113_18",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.18"
+      },
+      "createdAt": "2026-10-09T15:42:16.515Z",
+      "expiresAt": "2026-10-09T16:42:16.515Z",
+      "alertIds": [
+        "wi-05"
+      ],
+      "confidence": 0.96,
+      "reason": "repeated_injection_same_source + sql_injection_in_params + script_injection_in_params: 주입 표기 15번 반복 (T1190)"
+    },
+    {
+      "ruleId": "xdr.web_injection.deny_source.198_51_100_18",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.18"
+      },
+      "createdAt": "2026-10-09T15:42:16.515Z",
+      "expiresAt": "2026-10-09T16:42:16.515Z",
+      "alertIds": [
+        "wi-06"
+      ],
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + command_injection_in_params: 주입 표기 11번 반복 (T1190)"
+    },
+    {
+      "ruleId": "xdr.web_injection.deny_source.192_0_2_21",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.21"
+      },
+      "createdAt": "2026-10-09T15:42:16.515Z",
+      "expiresAt": "2026-10-09T16:42:16.515Z",
+      "alertIds": [
+        "wi-07"
+      ],
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + path_traversal_repeat: 주입 표기 14번 반복 (T1190)"
+    },
+    {
+      "ruleId": "xdr.web_injection.deny_source.203_0_113_22",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.22"
+      },
+      "createdAt": "2026-10-09T15:42:16.515Z",
+      "expiresAt": "2026-10-09T16:42:16.515Z",
+      "alertIds": [
+        "wi-08"
+      ],
+      "confidence": 0.93,
+      "reason": "repeated_injection_same_source + sql_injection_in_params: 주입 표기 10번 반복 (T1190)"
+    }
+  ]
+}
