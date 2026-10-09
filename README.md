@@ -123,3 +123,17 @@
 - `step` 5. `identityProvider`, `allowedRoutes`(자료 API 5개), `originalApiUrl`을 구현과 맞췄습니다.
 - `src/attack-check.mjs`의 5단계 점검: 비로그인·위조 토큰 `/api/notes`, anon 키로 `originalApiUrl` 직접 조회, 첫 화면 코드의 저장소 주소·키 문자열 검사를 실제 요청으로 기록합니다. B의 타인 메모 접근은 미실행(화면에서 직접 확인)입니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: SQL Editor에서 `notes.sql` → `03-notes-uuid.sql` → `04-owners.sql`(이메일 채워서) → `04-rls.sql` → `05-revoke-direct.sql` 순서로 실행하고 main에 push합니다. 제출 묶음은 Codespaces에서 `git pull` → `npm ci` → `bundle-notes.json` 작성 → `npm run bundle`.
+
+## 보너스 xdr-01: 무차별 로그인 공격을 잡아 냄
+
+- 판정기 위치: ZTNA 판정기는 `src/decider.mjs`이고 규칙 이름은 같은 파일의 `RULE_IDS`(현재 `starter.deny`)에 있습니다. 이번 보너스는 판정기 규칙을 대신하지 않고, 확인 단계 하나를 더하는 부품만 만듭니다.
+- `xdr/brute-force/read-alerts.mjs`(제작 1): `xdr/fixtures/brute-force.json`에서 시각·출발 주소·계정·규칙 수준·설명만 뽑아 봅니다. 비밀값처럼 보이는 문자열은 `[가림]`으로 바꿉니다. 원본 경보는 고치지 않고, `decide.mjs`는 이 파일을 불러오지 않습니다. 경보 28건 = 뽑은 줄 28줄.
+- `xdr/brute-force/patterns.json`(제작 2): MITRE ATT&CK T1110 근거 패턴 세 개(`rapid_failures_same_source` T1110.001, `password_spraying_many_accounts` T1110.003, `low_volume_failures` T1110).
+- `xdr/brute-force/decide.mjs`(제작 3): 패턴을 맨 위 상수로 옮겨 적고 `decide(alert)` 하나를 내보냅니다. import·파일 입출력·네트워크가 없습니다. 확신도 0.85 이상 block, 0.5 이상 alert, 그 아래 record.
+- `xdr/brute-force/respond.mjs`(제작 4): block 후보만 `xdr/brute-force/deny-rules.json`의 거부 규칙(주소 하나당 하나, 1시간 만료, 근거 경보 번호 포함)으로 넣고, block·alert를 `xdr/alerts.log`에 한 줄씩 쌓습니다. 같은 묶음에 정상 이벤트가 있는 주소와 내부 대역은 막지 않습니다. `isDenied(rules, srcip, at)`가 판정기에 꽂을 확인 단계입니다.
+- 결과(제작 5): `npm run xdr:run -- brute-force` → block 10 · alert 9 · record 9, 정상 이벤트를 block한 경우 0건. `node xdr/brute-force/respond.mjs` 다시 흘리기 → 거부 규칙 9개(주소 9곳), 정상·애매 주소를 막은 경우 0건.
+
+### 한계
+
+- 현재 판정기 요청 계약(`docs/DECIDER_REQUEST.md`)에는 출발 주소 항목이 없어서, 거부 규칙을 실제 접속 판정에 바로 적용할 수는 없습니다. 운영 엔진이 주소를 계약에 넣어 줄 때 `isDenied`를 판정기 앞 단계로 연결합니다.
+- 판단은 경보에 적힌 건수·계정 수·설명에 기대므로, 경보 형식이 크게 바뀌면 패턴 조건을 다시 맞춰야 합니다.

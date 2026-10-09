@@ -1,0 +1,25 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "brute-force",
+  "technique": "MITRE ATT&CK T1110 Brute Force",
+  "patterns": [
+    {
+      "name": "rapid_failures_same_source",
+      "technique": "T1110.001",
+      "condition": "같은 출발 주소에서 짧은 시간(대략 5분 이내)에 로그인 실패가 15건 이상 이어지고, 그 사이 성공이 없음",
+      "evidence": "MITRE ATT&CK T1110.001 Password Guessing: 비밀번호를 반복해 추측하면 한 주소에서 짧은 시간에 실패가 몰린다."
+    },
+    {
+      "name": "password_spraying_many_accounts",
+      "technique": "T1110.003",
+      "condition": "같은 출발 주소가 서로 다른 계정 5개 이상에 같은 비밀번호로 로그인 실패를 넣음",
+      "evidence": "MITRE ATT&CK T1110.003 Password Spraying: 흔한 비밀번호 하나를 여러 계정에 대입해 계정 잠금을 피한다."
+    },
+    {
+      "name": "low_volume_failures",
+      "technique": "T1110",
+      "condition": "같은 주소·같은 계정의 로그인 실패가 3~14건이거나 2~4개 계정에 실패가 나뉨. 그 뒤 성공했다면 오타일 가능성도 함께 봄",
+      "evidence": "MITRE ATT&CK T1110 Brute Force: 대입 공격의 초기·저속 단계는 사용자 오타와 겉모습이 같아 알림으로만 남기고 지켜본다."
+    }
+  ]
+}

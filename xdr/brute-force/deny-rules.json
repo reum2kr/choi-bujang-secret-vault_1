@@ -1,0 +1,134 @@
+{
+  "schema": "aleph.xdr.deny-rules.v1",
+  "moduleKey": "brute-force",
+  "generatedAt": "2026-10-09T15:34:28.530Z",
+  "rules": [
+    {
+      "ruleId": "xdr.brute_force.deny_source.203_0_113_10",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.10"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-01",
+        "bf-02"
+      ],
+      "confidence": 0.94,
+      "reason": "rapid_failures_same_source: 로그인 실패 48건이 몰림 (T1110.001)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.198_51_100_20",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.20"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-03"
+      ],
+      "confidence": 0.93,
+      "reason": "password_spraying_many_accounts: 계정 5개 이상에 대입 (T1110.003)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.192_0_2_30",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.30"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-04"
+      ],
+      "confidence": 0.93,
+      "reason": "rapid_failures_same_source: 로그인 실패 52건이 몰림 (T1110.001)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.203_0_113_21",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.21"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-05"
+      ],
+      "confidence": 0.93,
+      "reason": "password_spraying_many_accounts: 계정 20개 이상에 대입 (T1110.003)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.198_51_100_44",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.44"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-06"
+      ],
+      "confidence": 0.95,
+      "reason": "rapid_failures_same_source: 로그인 실패 61건이 몰림 (T1110.001)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.203_0_113_15",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.15"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-07"
+      ],
+      "confidence": 0.93,
+      "reason": "rapid_failures_same_source: 로그인 실패 40건이 몰림 (T1110.001)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.192_0_2_18",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.18"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-08"
+      ],
+      "confidence": 0.95,
+      "reason": "rapid_failures_same_source: 로그인 실패 70건이 몰림 (T1110.001)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.198_51_100_8",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.8"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-09"
+      ],
+      "confidence": 0.97,
+      "reason": "password_spraying_many_accounts: 계정 15개 이상에 대입 (T1110.003)"
+    },
+    {
+      "ruleId": "xdr.brute_force.deny_source.203_0_113_40",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.40"
+      },
+      "createdAt": "2026-10-09T15:34:28.530Z",
+      "expiresAt": "2026-10-09T16:34:28.530Z",
+      "alertIds": [
+        "bf-10"
+      ],
+      "confidence": 0.95,
+      "reason": "rapid_failures_same_source: 로그인 실패 90건이 몰림 (T1110.001)"
+    }
+  ]
+}
