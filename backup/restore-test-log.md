@@ -1,4 +1,13 @@
-# 메모 복원 시험 기록
+# 복원 시험 기록
+
+## 안전 정책(notes 표 RLS) 복원 시험
+
+| 시각(2026-10-13, KST) | 실행 | 결과(`notes_policy_audit`) |
+|---|---|---|
+| 17:16 | `supabase/10-policy-backup.sql` | `policy_capture · captured` (`s4-rls-v1`), 차이 `changeCount 0` |
+| 17:17 | `supabase/10-policy-restore-test.sql` | `previewed (changeCount 2)` → `restored (changeCount 2)` → `policy_restore_test · pass`, 이어서 차이 `changeCount 0` |
+
+## 메모 한 건 복원 시험
 
 침해 전 검증 기록(`backup/notes-manifest.json`, 라벨 `pre-incident-10`)에 있는 시험 계정 B의 메모로 실제 배포를 대상으로 복원을 시험한 결과입니다.
 학생이 Codespaces에서 `npm run bundle`을 실행해 얻은 제출 묶음과 Vercel 로그에 나온 값만 옮겼습니다. 하지 않은 시험은 미실행으로 둡니다.

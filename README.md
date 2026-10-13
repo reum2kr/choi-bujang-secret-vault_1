@@ -260,7 +260,7 @@
   - 시험 `pass`: 침공 상태에서 B가 A 메모 2건을 봤고, 복원 뒤 0건, A는 자기 메모 2건.
   - 미리보기는 정책을 바꾸지 않음. 없는 버전·변조된 사본은 `stopped`로 멈추고 정책 그대로.
   - 사본·감사 표 고치기·지우기 거부, 브라우저 역할 함수 실행 거부.
-- 실제 Supabase에서 실행한 결과는 아래 「학생이 SQL Editor에서 실행한 결과」에 적습니다(실행 전에는 미실행).
+- 실제 Supabase에서 실행한 결과는 아래 「학생이 SQL Editor에서 실행한 결과」에 적었습니다.
 
 #### 보조 도구 기록 (`policy/audit.jsonl`)
 
@@ -307,7 +307,7 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 | 순서 | 단계 | 정상 요청 / 금지 요청 | 제출 묶음 점검 | 실행 여부 |
 |---|---|---|---|---|
 | 1 | 10 | 금지: 비로그인·위조 토큰 복원 요청 | `restore_anonymous` | 항상 실행(실제 배포) |
-| 0 | 10 | RLS 안전 정책 복원 시험: 침공 흉내 → 미리보기 → 복원 → B로 A 메모 0건·A로 자기 메모 보임 → 감사 표 `pass` | SQL Editor `supabase/10-policy-restore-test.sql` | 학생이 SQL Editor에서 실행(아래 기록), 제출 묶음 밖 |
+| 0 | 10 | RLS 안전 정책 복원 시험: 침공 흉내 → 미리보기 → 복원 → B로 A 메모 0건·A로 자기 메모 보임 → 감사 표 `pass` | SQL Editor `supabase/10-policy-restore-test.sql` | 학생이 실행함(2026-10-13 17:17 `pass`), 제출 묶음 밖 |
 | 2 | 10 | 판정기 코드 사본(보조) 다시 읽기 검증, 실행 전 복원 버전·변경 범위 표시, 변조·없는 사본은 중단 | `policy_snapshot_verified` | 항상 실행 |
 | 3 | 10 | B 메모 **삭제** → 미리보기 → 확인 없는 요청은 쓰기 없음 → 확인 뒤 복원 → 다시 읽어 침해 전 기록과 ID·소유자 지문·내용 해시 대조, 기록에 없는 ID는 멈춤 | `restore_b_deleted_note` | B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 4 | 10 | B 메모 **변조** → 미리보기(바뀔 항목 제목·내용) → 확인 뒤 복원 → 다시 읽어 대조, B의 다른 메모 그대로 | `restore_b_tampered_note` | B 비밀값이 있을 때 실행, 없으면 미실행 |
@@ -325,8 +325,9 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 
 ### 학생이 SQL Editor에서 실행한 결과 (안전 정책 = RLS)
 
-- `supabase/10-policy-backup.sql`(사본 남기기·검증·차이): 미실행
-- `supabase/10-policy-restore-test.sql`(침공 흉내 → 미리보기 → 복원 → 사용자별 확인 → 감사 표 기록): 미실행
+- 2026-10-13 17:16(KST) `supabase/10-policy-backup.sql`: 감사 표 `policy_capture · captured`(버전 `s4-rls-v1`), 차이 보기 `changeCount: 0`.
+- 2026-10-13 17:17(KST) `supabase/10-policy-restore-test.sql`: 감사 표에 `policy_restore · previewed (changeCount 2)` → `policy_restore · restored (changeCount 2)` → `policy_restore_test · pass`. 이어서 차이 보기 `changeCount: 0`(지금 정책 = 사본).
+- `pass`는 시험 SQL에서 복원 상태가 `restored`이고, B로는 A 메모 0건, A로는 자기 메모 1건 이상일 때만 기록됩니다.
 
 ## 10단계 저장점
 
