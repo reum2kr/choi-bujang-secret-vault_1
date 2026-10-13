@@ -148,6 +148,41 @@ async function zoneChecks(app) {
   ];
 }
 
+// 9단계: 학생 탐지 함수(src/detect.mjs)에 가상 조회 사건을 넣어 본 결과만 적습니다.
+// 실제 반 엔진의 사건 전달·접속 회수는 이 저장소에서 보낼 수 없으므로 미실행으로 남깁니다.
+async function detectChecks() {
+  const { detect } = await import('./detect.mjs');
+  const start = Date.UTC(2026, 9, 1, 2, 0, 0);
+  const reads = (count, deviceId, network) => Array.from({ length: count }, (_, i) => ({
+    at: new Date(start + i * 2000).toISOString(), method: 'GET', identity: { sub: 'learner_fixture' },
+    deviceId, decision: 'allow', signals: { source: 'judge_fixture', region: 'KR-11', network, hour: 2 },
+  }));
+  const mix = (...lists) => lists.flat().sort((a, b) => a.at.localeCompare(b.at));
+  const said = (r) => (r.action === 'observe' ? 'observe'
+    : `${r.action} · ${r.reasonCode} · 대상 ${r.subject}${r.deviceId ? `/${r.deviceId}` : ''}`);
+  const normal = detect(reads(200, 'device_home', 'usual'));
+  const regionOnly = detect(reads(200, 'device_home', 'usual').map((e) => ({ ...e, signals: { ...e.signals, region: 'US-CA' } })));
+  const fewUnusual = detect(reads(20, 'device_other', 'unusual'));
+  const doppel = detect(mix(reads(50, 'device_home', 'usual'), reads(150, 'device_other', 'unusual')));
+  return [
+    { attackId: 'detect_normal_device',
+      expected: '평소 네트워크의 정상 기기는 조회가 많아도 observe(회수 제안 없음)',
+      observed: `가상 사건 200건 탐지 결과 ${said(normal)}` },
+    { attackId: 'detect_region_only',
+      expected: '지역만 다르고 네트워크는 평소와 같으면 observe',
+      observed: `지역만 바꾼 가상 사건 200건 탐지 결과 ${said(regionOnly)}` },
+    { attackId: 'detect_unusual_network_only',
+      expected: '처음 보는 네트워크라도 조회가 적으면(20건) observe',
+      observed: `가상 사건 20건 탐지 결과 ${said(fewUnusual)}` },
+    { attackId: 'detect_doppelganger_burst',
+      expected: '같은 사용자의 다른 기기가 처음 보는 네트워크에서 10분 안에 120건을 넘게 조회하면 그 기기 하나만 propose_revocation · burst_read, 정상 기기는 유지',
+      observed: `정상 기기 50건 + 다른 기기 150건 탐지 결과 ${said(doppel)}` },
+    { attackId: 'live_revocation',
+      expected: '반 엔진이 회수 제안을 집행해 의심 기기 접속이 끊기고 걸린 시간이 측정됨',
+      observed: '미실행: 이 저장소에는 엔진의 사건 전달·회수 집행 경로가 없음. 실제 회수와 시간은 심판이 확인' },
+  ];
+}
+
 export async function runAttackChecks(config) {
   const app = appUrl(config);
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
@@ -244,7 +279,7 @@ export async function runAttackChecks(config) {
     ];
   }
 
-  if (config.step >= 5 && config.step <= 8) {
+  if (config.step >= 5 && config.step <= 9) {
     // 실제로 보낸 요청의 결과만 적습니다. 메모 본문·토큰·이메일은 기록하지 않습니다.
     if (typeof config.originalApiUrl !== 'string' || !config.originalApiUrl.startsWith('https://')) {
       throw new Error('aleph.config.json의 originalApiUrl을 먼저 넣어 주세요.');
@@ -281,6 +316,7 @@ export async function runAttackChecks(config) {
       ...(config.step >= 6 ? await deviceChecks() : []),
       ...(config.step >= 7 ? await stepUpChecks() : []),
       ...(config.step >= 8 ? await zoneChecks(app) : []),
+      ...(config.step >= 9 ? await detectChecks() : []),
     ];
   }
 

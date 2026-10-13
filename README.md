@@ -208,3 +208,21 @@
 - `step` 8. `allowedRoutes`에 `GET /api/notices`, `GET /api/notices/:id`, `PUT /api/notices/:id`를 더했습니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`, `zone_route_allowlist`, `zone_notes_self`, `zone_notes_no_bulk`, `zone_notices_instructor`입니다.
 - `src/attack-check.mjs`의 8단계 점검: 7단계 점검에 판정기 구역 규칙 가상 요청 네 건과 실제 배포의 비로그인 `/api/notices` 요청을 더하고, 토큰이 필요한 직접 API 교차 요청은 미실행으로 남깁니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: SQL Editor에서 `supabase/08-notices.sql` 실행(강사 지정은 선택) → `npm ci` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
+
+## 9단계 기록: 도플갱어를 찾고 권한을 거둡니다
+
+- 제작 1 (사건 입력 정리, `src/detect.mjs`의 `readEvent`): 가상 조회 사건에서 가명 사용자(`identity.sub`, 없으면 계약 이름 `subjectId`), 기기(`deviceId`), 요청 종류(`method`, `route`), 판정(`decision`), 엔진이 출처를 밝힌 네트워크(`signals.network`), 시각(`at`)만 골라 새 객체로 만듭니다. 메모 본문, 토큰, 이메일·실명은 복사하지 않습니다. `@`나 공백이 들어간 값은 가명으로 받지 않으며, 형식이 틀린 사건은 버리고 대신 채우지 않습니다.
+- 제작 2 (복합 의심 규칙 `detect_burst_read`): 같은 가명 사용자와 같은 기기의 GET 조회가 어느 10분 구간에서든 120건을 넘고, 그 조회가 평소와 다른 네트워크(`unusual`)에서 왔을 때만 의심으로 봅니다.
+  - 평소 네트워크의 많은 조회(정상 기기), 처음 보는 네트워크의 적은 조회, 지역만 다른 조회는 의심이 아닙니다. 지역은 읽지 않습니다.
+  - 정확히 120건은 제외합니다. 다른 사용자나 다른 기기의 조회는 합치지 않고, 10분 밖의 조회는 같은 묶음으로 세지 않습니다.
+  - 출처가 클라이언트 헤더처럼 믿을 수 없는 네트워크 값은 "모름"으로 둡니다. 네트워크 정보가 없는 연습 사건(`docs/DETECT_EVENTS.md` 형식)에는 다량 조회 기준만 적용합니다.
+- 제작 3 (별도 탐지 결과): 의심이면 `{ action: 'propose_revocation', reasonCode: 'burst_read', subject, deviceId }`를 돌려줍니다. `deviceId`는 엔진이 기기를 알려 준 경우에만 들어갑니다. 대상은 처음 기준을 넘은 사용자·기기 한 묶음뿐이고, 같은 사용자의 정상 기기는 제안에 넣지 않습니다. 의심이 아니면 `{ action: 'observe' }`입니다.
+  - 접속 허용/거부 응답(`src/decider.mjs`의 다섯 항목)은 바꾸지 않았습니다.
+  - 회수 API를 만들거나 기기 권한을 바꾸지 않습니다. 실제 회수와 걸린 시간은 심판이 확인합니다.
+- 로컬 확인: `npm run detect:test` 6건 통과. 이것은 가상 사건 연습이며, 실제 반 엔진의 사건 전달이나 접속 회수가 연결됐다는 뜻이 아닙니다.
+
+## 9단계 저장점
+
+- `step` 9. `identityProvider`, `allowedRoutes`, `originalApiUrl`은 8단계 그대로입니다. 판정기 `RULE_IDS`도 8단계 그대로입니다(판정기는 바꾸지 않았음). 탐지 규칙 이름은 `src/detect.mjs`의 `DETECT_RULE_IDS`(`detect_burst_read`)에 따로 둡니다.
+- `src/attack-check.mjs`의 9단계 점검: 8단계 점검에 탐지 함수 가상 사건 네 건(정상 기기, 지역만 다름, 처음 보는 네트워크의 적은 조회, 도플갱어 기기의 다량 조회)을 더하고, 실제 회수 집행은 미실행으로 남깁니다. 심판 판정이 아닙니다.
+- 다시 실행하는 방법: `npm ci` → `npm run detect:test` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
