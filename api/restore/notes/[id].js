@@ -1,11 +1,11 @@
-// 10단계 제작 3: POST /api/restore/notes/:id
-// 비공개 가상 메모 사본(notes_backup)에서 지정한 한 건만 notes로 되살립니다. 서비스는 메모 자료실(notes)입니다.
-//   1) 로그인 토큰으로 요청자를 확인합니다(브라우저가 보낸 owner_id·userId는 받지 않음, 본문은 비어 있어야 함).
-//   2) 사본을 다시 읽어 ID·소유자를 대조하고, 제목·내용으로 지문(sha256)을 다시 계산해 저장된 지문과 대조합니다.
-//      남의 메모이거나 사본이 없으면 404, 사본 지문이 틀리면 409로 중단합니다.
-//   3) 그 ID 한 건만 넣거나 고칩니다(다른 메모는 건드리지 않음). 되살린 행을 다시 읽어 ID·소유자·지문이 사본과 같은지 확인합니다.
-//   4) 결과를 restore_audit에 한 줄 덧붙입니다(고치기·지우기 불가). 응답과 로그에 메모 본문·토큰·이메일은 넣지 않습니다.
-//   머리글 X-Restore-Preview: 1 이면 1)·2)까지만 하고 복원할 버전(backupLabel)과 바뀔 항목(changes)만 돌려줍니다(쓰기 없음).
+// 10단계 제작 3: POST /api/restore/notes/:id  (서비스: 메모 자료실 notes)
+// 비공개 가상 메모 사본(notes_backup)에서 지정한 한 건만 notes로 되살립니다.
+//   1) 로그인 토큰으로 요청자를 확인합니다. 브라우저가 보낸 owner_id·userId·내용은 받지 않습니다(본문은 비어 있어야 함, 쿼리 거부).
+//   2) 사본을 다시 읽어, 침해 전에 검증해 커밋한 기록(backup/notes-manifest.json)과 ID·소유자·내용 해시를 대조합니다.
+//      기록에 없거나(사본 없음) 하나라도 다르면(검증 실패) 아무것도 쓰지 않고 멈춥니다(404·409).
+//   3) 미리보기(X-Restore-Preview: 1)면 복원할 버전과 바뀔 항목만 돌려주고 끝냅니다(쓰기 없음).
+//   4) 그 ID 한 건만 넣거나 고친 뒤, 다시 읽어 ID·소유자·내용 해시가 기록과 같은지 확인합니다. 다른 메모는 건드리지 않습니다.
+//   5) 결과를 restore_audit에 한 줄 덧붙입니다(고치기·지우기 불가). 응답과 로그에 메모 본문·토큰·이메일은 넣지 않습니다.
 import { contentSha256, verifyCopy, verifyRestored } from '../../../lib/backup-verify.mjs';
 import { UUID, fail, pathId, requireLogin, send } from '../../../lib/notes-server.mjs';
 import { logDeny, markResource } from '../../../lib/zones.mjs';
@@ -42,31 +42,31 @@ export default async function handler(request, response) {
     logDeny('notes', 'POST', 'restore_body_not_allowed');
     return fail(response, 400, 'BODY_NOT_ALLOWED', '복원 요청 본문은 비어 있어야 합니다. 내용과 소유자는 사본에서만 가져옵니다.');
   }
-  const notFound = async (reason) => {
-    logDeny('notes', 'POST', reason);
-    if (UUID.test(id)) await audit(db, { note_id: id.toLowerCase(), actor_id: userId, result: 'denied', detail: reason });
+  if (!UUID.test(id)) {
+    logDeny('notes', 'POST', 'restore_bad_id');
     return fail(response, 404, 'NOT_FOUND', '복원할 사본을 찾을 수 없습니다.');
-  };
-  if (!UUID.test(id)) return notFound('restore_bad_id');
+  }
   const noteId = id.toLowerCase();
   markResource(response, 'notes', noteId);
+  const preview = request.headers?.['x-restore-preview'] === '1';
 
-  // 2) 사본 다시 읽기·검증
+  // 2) 사본 다시 읽기 → 침해 전 검증 기록과 대조. 실패하면 여기서 멈춤(쓰기 없음).
   const { data: copy, error: copyError } = await db.from('notes_backup')
     .select('id, owner_id, title, body, content_sha256, backup_label').eq('id', noteId).maybeSingle();
   if (copyError) {
     console.error('restore: 사본을 읽지 못했습니다.', copyError?.code ?? 'unknown');
-    return fail(response, 502, 'BACKUP_UNAVAILABLE', '사본을 읽지 못했습니다.');
+    return fail(response, 502, 'BACKUP_UNAVAILABLE', '사본을 읽지 못해 복원을 멈췄습니다.');
   }
   const check = verifyCopy(copy, { id: noteId, ownerId: userId });
-  if (!check.ok && check.status === 404) return notFound('restore_not_owner_or_missing');
   if (!check.ok) {
-    logDeny('notes', 'POST', check.reason);
-    await audit(db, { note_id: noteId, actor_id: userId, result: check.reason, detail: copy.backup_label });
-    return fail(response, 409, 'BACKUP_INVALID', '사본의 내용 지문이 맞지 않아 복원을 중단했습니다.');
+    logDeny('notes', 'POST', `restore_stopped_${check.reason}`);
+    await audit(db, { note_id: noteId, actor_id: userId, result: `stopped_${check.reason}`, detail: preview ? 'preview' : 'restore' });
+    return check.status === 404
+      ? fail(response, 404, 'NOT_FOUND', '검증된 사본에 없는 메모라 복원을 멈췄습니다.')
+      : fail(response, 409, 'BACKUP_INVALID', '사본이 침해 전 검증 기록과 달라 복원을 멈췄습니다.');
   }
+  const { entry, label } = check;
 
-  // 3) 그 한 건만 되살리기
   const { data: current, error: currentError } = await db.from('notes')
     .select('id, owner_id, title, body').eq('id', noteId).maybeSingle();
   if (currentError) {
@@ -74,27 +74,25 @@ export default async function handler(request, response) {
     return fail(response, 502, 'NOTES_UNAVAILABLE', '현재 메모를 읽지 못했습니다.');
   }
   if (current && current.owner_id !== userId) {
-    await audit(db, { note_id: noteId, actor_id: userId, result: 'conflict_other_owner', detail: copy.backup_label });
+    await audit(db, { note_id: noteId, actor_id: userId, result: 'stopped_other_owner', detail: label });
     return fail(response, 409, 'OWNER_CONFLICT', '같은 ID의 메모가 다른 소유자에게 있어 복원하지 않았습니다.');
   }
-  // 미리보기(X-Restore-Preview: 1): 사본 검증까지만 하고, 복원할 버전과 바뀔 항목을 보여 준 뒤 아무것도 쓰지 않습니다.
-  if (request.headers?.['x-restore-preview'] === '1') {
-    const changes = !current ? ['missing']
-      : [current.title !== copy.title ? 'title' : null, current.body !== copy.body ? 'body' : null].filter(Boolean);
-    await audit(db, { note_id: noteId, actor_id: userId, result: 'previewed', detail: copy.backup_label });
+  const changes = !current ? ['note']
+    : [current.title !== copy.title ? 'title' : null, current.body !== copy.body ? 'body' : null].filter(Boolean);
+
+  // 3) 미리보기: 복원할 버전과 바뀔 항목만 보여 주고 끝냄
+  if (preview) {
+    await audit(db, { note_id: noteId, actor_id: userId, result: 'previewed', detail: label });
     return send(response, 200, {
-      id: noteId,
-      result: 'preview',
-      backupLabel: copy.backup_label,
-      idMatches: true,
-      ownerMatches: true,
-      contentSha256: copy.content_sha256,
+      id: noteId, result: 'preview', backupLabel: label, verified: true,
+      contentSha256: entry.content_sha256,
       currentSha256: current ? contentSha256(current.title, current.body) : null,
       changes,
     });
   }
 
-  let result = 'already_matches';
+  // 4) 그 한 건만 되살리기
+  let result = 'already_same';
   if (!current) {
     const { error } = await db.from('notes').insert({ id: noteId, owner_id: userId, title: copy.title, body: copy.body });
     if (error) {
@@ -102,7 +100,7 @@ export default async function handler(request, response) {
       return fail(response, 502, 'RESTORE_FAILED', '메모를 되살리지 못했습니다.');
     }
     result = 'restored';
-  } else if (contentSha256(current.title, current.body) !== copy.content_sha256) {
+  } else if (changes.length) {
     const { error } = await db.from('notes').update({ title: copy.title, body: copy.body })
       .eq('id', noteId).eq('owner_id', userId);
     if (error) {
@@ -111,22 +109,18 @@ export default async function handler(request, response) {
     }
     result = 'restored';
   }
-
-  // 되살린 행을 다시 읽어 ID·소유자·지문 대조
   const { data: after, error: afterError } = await db.from('notes')
     .select('id, owner_id, title, body').eq('id', noteId).eq('owner_id', userId).maybeSingle();
-  const verified = !afterError && verifyRestored(after, copy);
+  const verified = !afterError && verifyRestored(after, entry);
   if (!verified) result = 'restore_verify_failed';
-  const audited = await audit(db, { note_id: noteId, actor_id: userId, result, detail: copy.backup_label });
+
+  // 5) 감사 기록
+  const audited = await audit(db, { note_id: noteId, actor_id: userId, result, detail: label });
   console.info(`restore result=${result} audited=${audited}`);
-  if (!verified) return fail(response, 500, 'RESTORE_VERIFY_FAILED', '되살린 메모가 사본과 같은지 확인하지 못했습니다.');
+  if (!verified) return fail(response, 500, 'RESTORE_VERIFY_FAILED', '되살린 메모가 검증 기록과 같은지 확인하지 못했습니다.');
   return send(response, 200, {
-    id: noteId,
-    result,
-    idMatches: true,
-    ownerMatches: true,
-    contentSha256: copy.content_sha256,
-    backupLabel: copy.backup_label,
-    audited,
+    id: noteId, result, backupLabel: label,
+    idMatches: true, ownerMatches: true, contentHashMatches: true,
+    contentSha256: entry.content_sha256, audited,
   });
 }

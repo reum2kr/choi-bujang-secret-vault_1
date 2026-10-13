@@ -71,3 +71,20 @@ select grantee, table_name, string_agg(privilege_type, ', ' order by privilege_t
 from information_schema.role_table_grants
 where table_schema = 'public' and table_name in ('notes_backup', 'restore_audit')
 group by grantee, table_name order by table_name, grantee;
+
+-- ④ 침해 전 검증 기록 뽑기 -----------------------------------------------------
+-- 시험 계정 B의 사본을 다시 읽어 내용 해시를 재계산하고, ID·소유자 지문·내용 해시만 JSON으로 뽑습니다.
+-- 결과를 backup/notes-manifest.json의 entries에 넣고 커밋합니다(제목·본문·이메일·사용자 번호는 넣지 않음).
+-- <B_EMAIL>은 SQL Editor 안에서만 실제 값으로 바꾸고, 이 파일에는 적지 않습니다.
+select json_build_object(
+  'label', 'pre-incident-10',
+  'entries', json_agg(json_build_object(
+    'id', b.id,
+    'owner_sha256', encode(sha256(convert_to(b.owner_id::text, 'UTF8')), 'hex'),
+    'content_sha256', b.content_sha256,
+    'recomputed_ok', b.content_sha256 = encode(sha256(convert_to(b.title || E'\n' || b.body, 'UTF8')), 'hex')
+  ) order by b.backed_up_at, b.id)
+) as manifest
+from public.notes_backup b
+join auth.users u on u.id = b.owner_id
+where u.email = '<B_EMAIL>';

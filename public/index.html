@@ -308,15 +308,15 @@
         const path = `/api/restore/notes/${encodeURIComponent(id)}`;
         // 실행 전에 복원할 버전과 바뀔 항목을 먼저 보여 줍니다(미리보기는 아무것도 바꾸지 않음).
         const plan = await api(path, { method: 'POST', headers: { 'X-Restore-Preview': '1' } });
-        const names = { missing: '메모 전체(지금 없음)', title: '제목', body: '내용' };
+        const names = { note: '메모 전체(지금 없음)', title: '제목', body: '내용' };
         const changes = plan.changes.length ? plan.changes.map((c) => names[c] ?? c).join(', ') : '없음(이미 사본과 같음)';
-        if (!confirm(`사본 버전 ${plan.backupLabel}에서 복원합니다.\nID·소유자·내용 지문 검증 통과\n바뀔 항목: ${changes}\n\n복원할까요?`)) {
+        if (!confirm(`사본 버전 ${plan.backupLabel}에서 복원합니다.\n침해 전 검증 기록과 ID·소유자·내용 해시 대조 통과\n바뀔 항목: ${changes}\n\n복원할까요?`)) {
           restoreStatus('복원을 취소했습니다. 아무것도 바뀌지 않았습니다.');
           return;
         }
         const data = await api(path, { method: 'POST' });
         const word = data.result === 'restored' ? '복원했습니다' : '이미 사본과 같습니다';
-        restoreStatus(`${word}. ID·소유자 일치, 내용 지문 ${String(data.contentSha256).slice(0, 12)}… 사본과 같음`, 'ok');
+        restoreStatus(`${word}. ID·소유자·내용 해시 ${String(data.contentSha256).slice(0, 12)}… 검증 기록과 같음`, 'ok');
         restoreForm.reset();
         await loadNotes();
       } catch (error) {

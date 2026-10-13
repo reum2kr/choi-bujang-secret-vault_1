@@ -191,7 +191,7 @@ async function liveRestoreChecks(app, config) {
   const password = process.env.ALEPH_B_PASSWORD;
   const notRun = '미실행: Codespaces 비밀값 ALEPH_B_EMAIL·ALEPH_B_PASSWORD가 없어 B 로그인 요청을 보내지 않음';
   if (!email || !password) return { drill: notRun, retest: notRun };
-  const { contentSha256 } = await import('../lib/backup-verify.mjs');
+  const { contentSha256, MANIFEST, manifestEntry } = await import('../lib/backup-verify.mjs');
   const login = await authed(app, 'POST', '/api/auth/login', null, { headers: { 'X-Vault-Request': '1' }, body: { email, password } });
   const token = login.data?.accessToken;
   if (login.status !== 200 || typeof token !== 'string') {
@@ -205,28 +205,33 @@ async function liveRestoreChecks(app, config) {
   try {
     const list = await authed(app, 'GET', '/api/notes', token);
     const notes = Array.isArray(list.data) ? list.data : [];
-    // 미리보기로 사본 검증이 통과하고 바뀔 항목이 없는 메모 한 건만 고릅니다(사본 뒤에 고친 메모는 건드리지 않음).
+    // 침해 전 검증 기록(backup/notes-manifest.json)에 있는 B 메모 가운데, 미리보기에서 바뀔 항목이 없는 한 건만 고릅니다.
+    // 사본 뒤에 고친 메모는 건드리지 않습니다.
     let pick = null;
-    let previewed = 0;
-    for (const note of notes.slice(0, 10)) {
+    for (const note of notes.filter((n) => manifestEntry(n.id))) {
       const plan = await authed(app, 'POST', restorePath(note.id), token, { headers: { 'X-Restore-Preview': '1' } });
-      previewed += 1;
-      if (plan.status === 200 && Array.isArray(plan.data?.changes) && plan.data.changes.length === 0) { pick = { note, plan: plan.data }; break; }
+      if (plan.status === 200 && plan.data?.verified === true && Array.isArray(plan.data.changes) && plan.data.changes.length === 0) {
+        pick = { note, plan: plan.data, entry: manifestEntry(note.id) };
+        break;
+      }
     }
-    const missing = await authed(app, 'POST', restorePath('00000000-0000-4000-8000-0000000000aa'), token, { headers: { 'X-Restore-Preview': '1' } });
+    const absent = await authed(app, 'POST', restorePath('00000000-0000-4000-8000-0000000000aa'), token, { headers: { 'X-Restore-Preview': '1' } });
     if (!pick) {
-      drill = `B 실제 로그인: 메모 ${notes.length}건 미리보기 ${previewed}건 중 사본과 같은 메모 없음 → 복원 연습 미실행 · 사본 없는 ID 미리보기 HTTP ${missing.status}`;
+      drill = `미실행: B 메모 가운데 검증 기록(${MANIFEST.label})에 있고 지금 사본과 같은 메모가 없어 복원 연습을 하지 않음 · 기록에 없는 ID 미리보기 HTTP ${absent.status}`;
     } else {
-      const id = pick.note.id;
+      const { entry } = pick;
+      const id = entry.id;
       const removed = await authed(app, 'DELETE', `/api/notes/${id}`, token);
       const plan = await authed(app, 'POST', restorePath(id), token, { headers: { 'X-Restore-Preview': '1' } });
       const done = await authed(app, 'POST', restorePath(id), token);
       const reread = await authed(app, 'GET', `/api/notes/${id}`, token);
       restoredId = done.status === 200 ? id : null;
       const rereadHash = reread.status === 200 ? contentSha256(reread.data.title, reread.data.body) : null;
-      const same = done.status === 200 && done.data?.idMatches === true && done.data?.ownerMatches === true
-        && reread.data?.id === id && rereadHash === pick.plan.contentSha256 && done.data?.contentSha256 === pick.plan.contentSha256;
-      drill = `B 실제 로그인: 메모 ${short(id)}… 사본 ${pick.plan.backupLabel} 검증 통과 → 삭제 HTTP ${removed.status} → 미리보기 바뀔 항목 ${(plan.data?.changes ?? []).join(',') || '-'} → 복원 HTTP ${done.status} ${done.data?.result ?? done.data?.error ?? ''} → 다시 읽은 ID·소유자·해시 ${short(rereadHash)} ${same ? '사본과 같음' : '사본과 다름'} · 사본 없는 ID HTTP ${missing.status} 중단`;
+      // 서버 응답이 아니라 저장소의 침해 전 기록과 직접 대조합니다(소유자는 서버가 이 토큰의 주인으로만 복원하므로 목록·읽기 200으로 확인).
+      const idSame = reread.data?.id === entry.id;
+      const hashSame = rereadHash === entry.content_sha256;
+      const ownerSame = done.data?.ownerMatches === true && reread.status === 200;
+      drill = `B 실제 로그인: 메모 ${short(id)}… 미리보기(버전 ${pick.plan.backupLabel}, 바뀔 항목 없음) → 삭제 HTTP ${removed.status} → 미리보기 바뀔 항목 ${(plan.data?.changes ?? []).join(',') || '-'} → 복원 HTTP ${done.status} ${done.data?.result ?? done.data?.error ?? ''} → 다시 읽어 검증 기록과 대조: ID ${idSame ? '같음' : '다름'} · 소유자 ${ownerSame ? '같음' : '확인 못 함'} · 내용 해시 ${short(rereadHash)} ${hashSame ? '같음' : '다름'} · 기록에 없는 ID HTTP ${absent.status} 멈춤`;
     }
   } catch (error) {
     drill = `복원 연습 중 오류: ${String(error?.name ?? 'error')}`;
@@ -315,7 +320,7 @@ async function restoreChecks(app, config) {
       expected: '실행 전에 복원할 버전과 현재 시험 정책과의 변경 범위를 표시',
       observed: diffLine },
     { attackId: 'restore_b_own_note',
-      expected: 'B 로그인으로 사본의 자기 메모 한 건 복원: 사본을 다시 읽어 검증·미리보기 뒤 복원하고, ID·소유자·내용 해시가 사본과 같음. 사본 없는 ID는 멈춤',
+      expected: 'B 메모 한 건: 사본을 다시 읽어 침해 전 검증 기록과 대조·미리보기 뒤 복원하고, 다시 읽은 ID·소유자·내용 해시가 기록과 같음. 기록에 없는 ID는 멈춤',
       observed: live.drill },
     { attackId: 'post_restore_retest',
       expected: '복구 뒤 B의 정상 요청(내 목록·복원한 메모 읽기)은 200, 금지 요청(공지 403, 쿼리·본문 owner_id 400, 없는 메모 404, 비로그인 401)은 거부',
