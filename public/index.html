@@ -32,6 +32,7 @@
     li { border: 1px solid #51667c; border-radius: 14px; padding: 17px 19px; background: #1a2a3d; }
     strong { display: block; font-size: 18px; margin-bottom: 5px; }
     li span { color: #bfd0e5; }
+    .note-id { display: block; margin-top: 6px; font-size: 12px; color: #8ea3bb; font-family: ui-monospace, monospace; }
   </style>
 </head>
 <body>
@@ -67,6 +68,16 @@
         </div>
       </form>
       <p id="note-message" class="status" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="panel" id="restore-panel" aria-labelledby="restore-title" hidden>
+      <h2 id="restore-title">백업에서 메모 한 건 복원</h2>
+      <p>침해 전에 떠 둔 비공개 사본에서 내 메모 한 건만 되살립니다. 서버가 ID·소유자·내용 지문을 사본과 대조합니다.</p>
+      <form id="restore-form">
+        <label>메모 ID <input id="restore-id" maxlength="36" pattern="[0-9a-fA-F-]{36}" required></label>
+        <button id="restore-button" type="submit">복원</button>
+      </form>
+      <p id="restore-message" class="status" role="status" aria-live="polite"></p>
     </section>
 
     <ul id="notes" aria-live="polite"><li>로그인하면 가상 자료가 보입니다.</li></ul>
@@ -183,6 +194,7 @@
         headers: {
           Authorization: `Bearer ${currentSession?.accessToken ?? ''}`,
           ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.headers ?? {}),
         },
       });
       const data = await response.json().catch(() => ({}));
@@ -245,8 +257,11 @@
               noteStatus(`삭제 실패: ${error.message}`, 'error');
             }
           });
+          const noteId = document.createElement('small');
+          noteId.className = 'note-id';
+          noteId.textContent = `ID ${note.id}`;
           row.append(edit, remove);
-          item.append(title, content, row);
+          item.append(title, content, noteId, row);
           return item;
         }));
       } catch (error) {
@@ -276,11 +291,48 @@
     });
     cancelEdit.addEventListener('click', () => { resetEditor(); noteStatus(''); });
 
+    // 10단계: 복원 요청은 ID만 경로에 담아 보냅니다. 내용·소유자는 서버가 사본에서만 가져옵니다.
+    const restorePanel = document.querySelector('#restore-panel');
+    const restoreForm = document.querySelector('#restore-form');
+    const restoreButton = document.querySelector('#restore-button');
+    const restoreMessage = document.querySelector('#restore-message');
+    function restoreStatus(text, kind = '') {
+      restoreMessage.textContent = text;
+      restoreMessage.className = `status ${kind}`;
+    }
+    restoreForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      restoreButton.disabled = true;
+      const id = document.querySelector('#restore-id').value.trim();
+      try {
+        const path = `/api/restore/notes/${encodeURIComponent(id)}`;
+        // 실행 전에 복원할 버전과 바뀔 항목을 먼저 보여 줍니다(미리보기는 아무것도 바꾸지 않음).
+        const plan = await api(path, { method: 'POST', headers: { 'X-Restore-Preview': '1' } });
+        const names = { note: '메모 전체(지금 없음)', title: '제목', body: '내용' };
+        const changes = plan.changes.length ? plan.changes.map((c) => names[c] ?? c).join(', ') : '없음(이미 사본과 같음)';
+        if (!confirm(`다시 읽은 사본: 버전 ${plan.backupLabel}, 저장 시각 ${plan.backedUpAt ? new Date(plan.backedUpAt).toLocaleString() : '-'}\n정책 사본 ${plan.policyVersion ?? '-'} 검증 통과, 사본의 ID·소유자·내용 해시 검증 통과\n바뀔 항목: 메모 ${plan.id}의 ${changes}\n\n복원할까요?`)) {
+          restoreStatus('복원을 취소했습니다. 아무것도 바뀌지 않았습니다.');
+          return;
+        }
+        const data = await api(path, { method: 'POST', headers: { 'X-Restore-Confirm': plan.backupLabel } });
+        const word = data.result === 'restored' ? '복원했습니다' : '이미 사본과 같습니다';
+        restoreStatus(`${word}. 다시 읽은 ID·소유자·내용 해시 ${String(data.contentSha256).slice(0, 12)}…가 사본과 같음`, 'ok');
+        restoreForm.reset();
+        await loadNotes();
+      } catch (error) {
+        restoreStatus(`복원 실패: ${error.message}`, 'error');
+      } finally {
+        restoreButton.disabled = false;
+      }
+    });
+
     let lastToken;
     function update(session) {
       currentSession = session;
       render(session);
       editorPanel.hidden = !session;
+      restorePanel.hidden = !session;
+      if (!session) restoreStatus('');
       scheduleRefresh(session);
       if (session?.accessToken === lastToken) return;
       lastToken = session?.accessToken;
