@@ -137,12 +137,13 @@ async function zoneChecks(app, { compact = false } = {}) {
   const crossLine = { attackId: 'zone_api_cross_owner',
     expected: '메뉴를 우회한 직접 API 요청: B의 A 메모 GET·PUT은 404, 학생의 공지 GET·PUT은 403 INSTRUCTOR_REQUIRED',
     observed: '미실행: 로그인 토큰이 필요해 이 스크립트로는 보내지 않음. 자료 API 소유자·강사 대조는 가짜 DB 로컬 시험으로 확인' };
+  const short = (o) => `${o.decision}(${o.reasonCode})`; // 한 줄 300자 한도에 맞춰 결정과 이유 코드만
   if (compact) {
     // 10단계부터는 제출 점검 20개 한도 때문에 판정기 구역 가상 요청 여섯 건을 한 줄로 합쳐 적습니다(결과는 그대로 모두 기록).
     return [
       { attackId: 'zone_decider_rules',
         expected: '자기 메모 한 건 allow · 메모 전체 목록 deny(zone_notes_no_bulk) · 학생의 공지 수정·읽기 deny(instructor_required) · export 기능 경로·경로표 밖 경로 deny(route_not_allowed)',
-        observed: `판정기 응답 자기 메모 ${said(own)} / 전체 목록 ${said(bulkList)} / 공지 수정 ${said(noticeWrite)} / 공지 읽기 ${said(noticeRead)} / export ${said(exportPath)} / GET /admin ${said(unknown)}` },
+        observed: `판정기 응답 자기 메모 ${short(own)} / 전체 목록 ${short(bulkList)} / 공지 수정 ${short(noticeWrite)} / 공지 읽기 ${short(noticeRead)} / export ${short(exportPath)} / GET /admin ${short(unknown)}` },
       noticeLine,
       crossLine,
     ];
