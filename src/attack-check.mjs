@@ -50,6 +50,30 @@ async function anonDataApi(url = `${SUPABASE_URL}/rest/v1/notes?select=id&limit=
   return { status: response.status, rows, code };
 }
 
+async function deviceChecks() {
+  const [{ decide }, { fixtureRequests }] = await Promise.all([
+    import('./decider.mjs'),
+    import('../scripts/fixture-7.mjs'),
+  ]);
+  const { normal } = fixtureRequests();
+  const unregistered = {
+    ...normal,
+    requestId: crypto.randomUUID(),
+    deviceRegistered: false,
+  };
+  const describe = (result) => `판정기 응답 ${result.decision} · ${result.reasonCode} · ${result.ruleIds.join(',')}`;
+  const registeredResult = await decide(normal);
+  const unregisteredResult = await decide(unregistered);
+  return [
+    { attackId: 'registered_device_read',
+      expected: '등록 기기의 내 자료실 읽기(GET /notes/:id)는 allow',
+      observed: describe(registeredResult) },
+    { attackId: 'unregistered_device_read',
+      expected: '미등록 기기의 같은 요청은 deny · device_not_registered',
+      observed: `${describe(unregisteredResult)} (미등록 기기 실제 공격은 심판이 확인)` },
+  ];
+}
+
 export async function runAttackChecks(config) {
   const app = appUrl(config);
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
@@ -146,7 +170,7 @@ export async function runAttackChecks(config) {
     ];
   }
 
-  if (config.step === 5) {
+  if (config.step === 5 || config.step === 6) {
     // 실제로 보낸 요청의 결과만 적습니다. 메모 본문·토큰·이메일은 기록하지 않습니다.
     if (typeof config.originalApiUrl !== 'string' || !config.originalApiUrl.startsWith('https://')) {
       throw new Error('aleph.config.json의 originalApiUrl을 먼저 넣어 주세요.');
@@ -180,6 +204,7 @@ export async function runAttackChecks(config) {
       { attackId: 'cross_user_note_read',
         expected: 'B 로그인으로 A 메모 id를 GET·PUT·DELETE하면 404로 거부되고 A 메모는 그대로',
         observed: '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
+      ...(config.step === 6 ? await deviceChecks() : []),
     ];
   }
 

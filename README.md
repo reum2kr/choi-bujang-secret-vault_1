@@ -147,3 +147,15 @@
 - `xdr/web-injection/respond.mjs`(제작 4): block 후보만 `xdr/web-injection/deny-rules.json` 거부 규칙(주소당 하나, 1시간 만료, 근거 경보 번호)으로 넣고 block·alert를 `xdr/alerts.log`에 쌓습니다. 로그에는 주입 문자열이 남지 않도록 요청 경로만 적고 쿼리는 버립니다. 같은 묶음에 정상 이벤트가 있는 주소와 내부 대역은 막지 않습니다.
 - 결과(제작 5): `npm run xdr:run -- web-injection` → block 8 · alert 9 · record 9, 정상 이벤트를 block한 경우 0건. 다시 흘리기 → 거부 규칙 7개(주소 7곳), 정상·애매 주소를 막은 경우 0건.
 - 한계: xdr-01과 같이 판정기 요청에 출발 주소가 없어 거부 규칙은 별도 파일과 `isDenied` 확인 단계로 둡니다. 한 번뿐인 주입 시도는 일부러 막지 않고 알림만 남기므로, 반복이 적은 정밀 공격은 사람이 알림을 보고 판단해야 합니다.
+
+## 6단계 기록: 등록한 기기만 자료실에 들어옴
+
+- 판정 요청의 `subjectId`는 확인된 가명 사용자 ID, `deviceId`는 확인된 기기 ID, `deviceRegistered`는 등록 여부, `method`는 HTTP 동작, `route`는 허용 경로 모양입니다. 인증서·CA·서명 키는 만들지 않았고 Git에도 없습니다.
+- `deviceRegistered`가 정확히 `true`가 아니면 `deny · device_not_registered`입니다. 등록 기기이고 `subjectId`가 있으며 GET 자료실 읽기 경로(`GET /notes`, `GET /notes/:id`, `/api` 접두사 허용)면 `allow · approved`; 그 밖은 기존 `starter.deny`가 거부합니다. 기존 자료실 주소와 브라우저 화면은 바꾸지 않았습니다.
+- 확인 순서: 저장소 루트에서 `npm run decider:test`를 실행해 `통과 · 등록 기기의 정상 요청`과 `통과 · 미등록 기기의 가상 요청`을 확인합니다. 가상 요청 연습이며 심판 통과 증거가 아닙니다. 설치할 접속 프로그램은 없고, 미등록 기기 공격은 심판이 확인합니다.
+
+## 6단계 저장점
+
+- `step` 6입니다. `identityProvider`·`allowedRoutes`·`originalApiUrl`은 5단계 그대로입니다.
+- `RULE_IDS`는 구현된 `starter.deny`와 `device_registered` 두 개입니다. `attack-check`의 6단계 점검은 5단계 점검에 판정기의 등록·미등록 가상 요청 응답 두 건을 더한 것이며, 심판 판정이 아닙니다.
+- 다시 실행하는 방법: `npm ci` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
