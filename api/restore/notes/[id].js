@@ -5,11 +5,9 @@
 //      남의 메모이거나 사본이 없으면 404, 사본 지문이 틀리면 409로 중단합니다.
 //   3) 그 ID 한 건만 넣거나 고칩니다(다른 메모는 건드리지 않음). 되살린 행을 다시 읽어 ID·소유자·지문이 사본과 같은지 확인합니다.
 //   4) 결과를 restore_audit에 한 줄 덧붙입니다(고치기·지우기 불가). 응답과 로그에 메모 본문·토큰·이메일은 넣지 않습니다.
-import { createHash } from 'node:crypto';
+import { contentSha256, verifyCopy, verifyRestored } from '../../../lib/backup-verify.mjs';
 import { UUID, fail, pathId, requireLogin, send } from '../../../lib/notes-server.mjs';
 import { logDeny, markResource } from '../../../lib/zones.mjs';
-
-export const contentSha256 = (title, body) => createHash('sha256').update(`${title}\n${body}`, 'utf8').digest('hex');
 
 function emptyBody(raw) {
   if (raw === undefined || raw === null || raw === '') return true;
@@ -59,9 +57,11 @@ export default async function handler(request, response) {
     console.error('restore: 사본을 읽지 못했습니다.', copyError?.code ?? 'unknown');
     return fail(response, 502, 'BACKUP_UNAVAILABLE', '사본을 읽지 못했습니다.');
   }
-  if (!copy || copy.id !== noteId || copy.owner_id !== userId) return notFound('restore_not_owner_or_missing');
-  if (contentSha256(copy.title, copy.body) !== copy.content_sha256) {
-    await audit(db, { note_id: noteId, actor_id: userId, result: 'backup_hash_mismatch', detail: copy.backup_label });
+  const check = verifyCopy(copy, { id: noteId, ownerId: userId });
+  if (!check.ok && check.status === 404) return notFound('restore_not_owner_or_missing');
+  if (!check.ok) {
+    logDeny('notes', 'POST', check.reason);
+    await audit(db, { note_id: noteId, actor_id: userId, result: check.reason, detail: copy.backup_label });
     return fail(response, 409, 'BACKUP_INVALID', '사본의 내용 지문이 맞지 않아 복원을 중단했습니다.');
   }
 
@@ -97,8 +97,7 @@ export default async function handler(request, response) {
   // 되살린 행을 다시 읽어 ID·소유자·지문 대조
   const { data: after, error: afterError } = await db.from('notes')
     .select('id, owner_id, title, body').eq('id', noteId).eq('owner_id', userId).maybeSingle();
-  const verified = !afterError && after && after.id === copy.id && after.owner_id === copy.owner_id
-    && contentSha256(after.title, after.body) === copy.content_sha256;
+  const verified = !afterError && verifyRestored(after, copy);
   if (!verified) result = 'restore_verify_failed';
   const audited = await audit(db, { note_id: noteId, actor_id: userId, result, detail: copy.backup_label });
   console.info(`restore result=${result} audited=${audited}`);

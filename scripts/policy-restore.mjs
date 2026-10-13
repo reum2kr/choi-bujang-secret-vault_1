@@ -28,7 +28,8 @@ async function loadDecider(path) {
 }
 
 // ── 사본 검증 ────────────────────────────────────────────────────────────────
-export async function verifySnapshot() {
+// options.snapshotPath는 제출 전 자기 점검이 변조·누락 사본으로 "중단되는지" 시험할 때만 씁니다.
+export async function verifySnapshot(options = {}) {
   if (!existsSync(MANIFEST)) stop('안전 정책 사본의 검증 정보(policy/safe/manifest.json)가 없습니다. 복원을 중단합니다.');
   let manifest;
   try { manifest = JSON.parse(readFileSync(MANIFEST, 'utf8')); } catch { stop('manifest.json을 읽을 수 없습니다. 복원을 중단합니다.'); }
@@ -37,7 +38,7 @@ export async function verifySnapshot() {
     || typeof manifest.snapshotPath !== 'string' || !manifest.snapshotPath.startsWith('policy/safe/')) {
     stop('manifest.json 형식이 맞지 않습니다. 복원을 중단합니다.');
   }
-  const snapshotPath = join(root, manifest.snapshotPath);
+  const snapshotPath = options.snapshotPath ?? join(root, manifest.snapshotPath);
   if (!existsSync(snapshotPath)) stop(`안전 정책 사본(${manifest.snapshotPath})이 없습니다. 복원을 중단합니다.`);
   const bytes = readFileSync(snapshotPath);
   const actual = sha256(bytes);
@@ -88,8 +89,8 @@ function lineDiff(before, after, limit = 40) {
   return { removed, added, lines: out, truncated: removed + added > out.length };
 }
 
-export async function diffPolicy(targetPath) {
-  const safe = await verifySnapshot();
+export async function diffPolicy(targetPath, options = {}) {
+  const safe = await verifySnapshot(options);
   if (!existsSync(targetPath)) stop(`현재 시험 정책(${relative(root, targetPath)})이 없습니다.`);
   const currentBytes = readFileSync(targetPath);
   const current = await loadDecider(targetPath);
@@ -130,8 +131,8 @@ function printPlan(d, targetPath) {
 }
 
 // ── 되돌리기 ─────────────────────────────────────────────────────────────────
-export async function restorePolicy(targetPath, confirm) {
-  const d = await diffPolicy(targetPath);
+export async function restorePolicy(targetPath, confirm, options = {}) {
+  const d = await diffPolicy(targetPath, options);
   printPlan(d, targetPath);
   if (confirm !== d.safe.manifest.version) {
     process.stdout.write(`\n미리보기만 했습니다. 위 항목을 확인했다면 --confirm ${d.safe.manifest.version} 을 붙여 다시 실행하세요.\n`);
