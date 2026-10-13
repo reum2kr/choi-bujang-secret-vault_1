@@ -159,3 +159,16 @@
 - `step` 6입니다. `identityProvider`·`allowedRoutes`·`originalApiUrl`은 5단계 그대로입니다.
 - `RULE_IDS`는 구현된 `starter.deny`와 `device_registered` 두 개입니다. `attack-check`의 6단계 점검은 5단계 점검에 판정기의 등록·미등록 가상 요청 응답 두 건을 더한 것이며, 심판 판정이 아닙니다.
 - 다시 실행하는 방법: `npm ci` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
+
+## 7단계 기록: 평소와 다른 접속은 다시 확인함
+
+- 제작 1 (입력 검사, `readContext`): 판정기는 엔진이 넘긴 `signals.source`가 `judge_fixture`(심판의 가상 사건)일 때만 지역·네트워크·시각과 `recentEvents`를 사건 근거로 씁니다. `none`이나 모르는 출처(예: 클라이언트 헤더)는 신뢰하지 않고, 빠지거나 형식이 틀린 지역·시각·네트워크·행동은 정상값으로 채우지 않고 "모름"으로 둡니다. 요청에 덧붙인 `geo`·`headers` 같은 계약 밖 값은 읽지 않습니다. `judge_fixture` 신호도 실제 위치 증거로 쓰지 않습니다.
+- 제작 2 (`step_up_required`): 새벽(0~5시) + 처음 보는 네트워크(`unusual`) + 최근 5분 안에 10건 이상인 사건이 **모두 겹칠 때만** `step_up` · `step_up_required`로 다시 로그인을 요구합니다. 지역 하나만으로는 판단하지 않고, 영구 차단(`deny`)이 아니며 사유는 `reasonCode`와 `ruleIds`에 남습니다. 기존 `device_registered` 규칙(미등록 기기 거부)은 그대로 먼저 적용됩니다.
+- 제작 3 (재로그인 계약): `docs/DECIDER_REQUEST.md`에는 엔진이 검증한 재로그인 정보 `stepUp {verified, authAgeSeconds}`가 있습니다. 판정기는 복합 사건이면 `step_up`으로 자료를 주지 않고, 엔진이 확인한 새 로그인(`verified: true`, 5분 이내) 뒤 들어온 새 요청만 다시 판정해 `allow`합니다. `verified`만 있고 나이가 없거나 5분이 지난 경우는 계속 `step_up`입니다. 토큰 원문은 판정기·로그·제출 묶음에 남기지 않습니다. 실제 엔진의 재로그인 흐름으로 차단·허용을 실측하는 것은 이 저장소에서 보낼 수 없어 미실행입니다.
+- 확인 순서: `npm run decider:test` → `통과 · 등록 기기의 정상 요청`, `통과 · 미등록 기기의 가상 요청`, `통과 · 복합 이상 접속`, `통과 · 다시 확인한 복합 이상 접속` 네 줄. `npm run fixture:7` → `정상 사건: allow`, `복합 이상 사건: step_up`. 모두 가상 요청 연습이며 심판 통과 증거가 아닙니다.
+
+## 7단계 저장점
+
+- `step` 7. `identityProvider`·`allowedRoutes`·`originalApiUrl`은 그대로입니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required` 세 개입니다.
+- `src/attack-check.mjs`의 7단계 점검: 5·6단계 점검에 더해 판정기에 정상·복합 이상·재로그인 뒤·위조 출처 가상 사건을 넣어 본 응답과, 실제 재로그인 흐름 미실행을 기록합니다. 심판 판정이 아닙니다.
+- 다시 실행하는 방법: `npm ci` → `npm run decider:test` → `npm run fixture:7` → `bundle-notes.json` 작성 → `npm run bundle`.

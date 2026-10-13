@@ -74,6 +74,37 @@ async function deviceChecks() {
   ];
 }
 
+// 7단계: 판정기에 정상·복합 이상·재로그인 뒤·위조 출처 가상 사건을 직접 넣어 본 결과만 적습니다.
+// 실제 재로그인 확인(제공 엔진이 새 로그인 시각을 검증하는 흐름)은 이 저장소에서 보낼 수 없어 미실행으로 남깁니다.
+async function stepUpChecks() {
+  const { decide } = await import('./decider.mjs');
+  const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
+  const { normal, suspicious } = fixtureRequests();
+  const fresh = (r) => ({ ...r, requestId: crypto.randomUUID() });
+  const said = (o) => `${o.decision} · ${o.reasonCode} · ${o.ruleIds.join(',')}`;
+  const ok = await decide(fresh(normal));
+  const odd = await decide(fresh(suspicious));
+  const again = await decide(fresh({ ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } }));
+  const forged = await decide(fresh({ ...suspicious, signals: { ...suspicious.signals, source: 'client_header' } }));
+  return [
+    { attackId: 'normal_context_read',
+      expected: '평소 시각·평소 네트워크·대량 읽기 없음 가상 사건은 allow',
+      observed: `판정기 응답 ${said(ok)}` },
+    { attackId: 'anomalous_context_read',
+      expected: '새벽 시각 + 처음 보는 네트워크 + 5분 내 대량 읽기 가상 사건은 step_up · step_up_required',
+      observed: `판정기 응답 ${said(odd)}` },
+    { attackId: 'stepped_up_context_read',
+      expected: '같은 복합 사건이라도 엔진이 확인한 재로그인(60초 전) 뒤 새 요청은 allow',
+      observed: `판정기 응답 ${said(again)}` },
+    { attackId: 'forged_client_signal',
+      expected: '출처가 클라이언트 헤더인 접속 정보는 신뢰하지 않음(사건 근거로 승격하지 않음)',
+      observed: `출처 client_header 요청의 판정기 응답 ${said(forged)} (복합 사건 규칙 미적용)` },
+    { attackId: 'real_step_up_block',
+      expected: '제공 엔진이 새 로그인 시각을 검증할 때 재로그인 전 자료 차단·새 요청 허용 실측',
+      observed: '미실행: 이 저장소에서는 엔진의 재로그인 검증 흐름을 보낼 수 없음. 판정기 응답만 가상 사건으로 확인' },
+  ];
+}
+
 export async function runAttackChecks(config) {
   const app = appUrl(config);
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
@@ -170,7 +201,7 @@ export async function runAttackChecks(config) {
     ];
   }
 
-  if (config.step === 5 || config.step === 6) {
+  if (config.step >= 5 && config.step <= 7) {
     // 실제로 보낸 요청의 결과만 적습니다. 메모 본문·토큰·이메일은 기록하지 않습니다.
     if (typeof config.originalApiUrl !== 'string' || !config.originalApiUrl.startsWith('https://')) {
       throw new Error('aleph.config.json의 originalApiUrl을 먼저 넣어 주세요.');
@@ -204,7 +235,8 @@ export async function runAttackChecks(config) {
       { attackId: 'cross_user_note_read',
         expected: 'B 로그인으로 A 메모 id를 GET·PUT·DELETE하면 404로 거부되고 A 메모는 그대로',
         observed: '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
-      ...(config.step === 6 ? await deviceChecks() : []),
+      ...(config.step >= 6 ? await deviceChecks() : []),
+      ...(config.step >= 7 ? await stepUpChecks() : []),
     ];
   }
 
