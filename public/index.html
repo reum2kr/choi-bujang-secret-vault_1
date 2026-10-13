@@ -314,7 +314,7 @@
           restoreStatus('복원을 취소했습니다. 아무것도 바뀌지 않았습니다.');
           return;
         }
-        const data = await api(path, { method: 'POST' });
+        const data = await api(path, { method: 'POST', headers: { 'X-Restore-Confirm': plan.backupLabel } });
         const word = data.result === 'restored' ? '복원했습니다' : '이미 사본과 같습니다';
         restoreStatus(`${word}. ID·소유자·내용 해시 ${String(data.contentSha256).slice(0, 12)}… 검증 기록과 같음`, 'ok');
         restoreForm.reset();

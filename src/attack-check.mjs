@@ -246,14 +246,17 @@ async function liveRestoreChecks(app, config) {
       // ① 삭제 → 복원
       const removed = await authed(app, 'DELETE', `/api/notes/${entry.id}`, b.token);
       const plan1 = await preview(entry.id);
-      const done1 = await authed(app, 'POST', restorePath(entry.id), b.token);
-      out.drill = `B 실제 요청: 삭제 ${removed.status} → 미리보기(버전 ${plan1.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan1.data?.changes ?? []).join(',') || '-'}) → 복원 ${done1.status} ${done1.data?.result ?? done1.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done1)} · 기록에 없는 ID ${absent.status} 멈춤`;
+      // 확인 없이 보낸 복원 요청은 미리보기만 돌려주고 쓰지 않아야 합니다(메모는 여전히 없음).
+      const unconfirmed = await authed(app, 'POST', restorePath(entry.id), b.token);
+      const stillGone = await authed(app, 'GET', `/api/notes/${entry.id}`, b.token);
+      const done1 = await authed(app, 'POST', restorePath(entry.id), b.token, { headers: { 'X-Restore-Confirm': plan1.data?.backupLabel ?? '' } });
+      out.drill = `B 실제 요청: 삭제 ${removed.status} → 미리보기(버전 ${plan1.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan1.data?.changes ?? []).join(',') || '-'}) → 확인 없는 요청 ${unconfirmed.data?.result ?? unconfirmed.status}·쓰기 ${stillGone.status === 404 ? '없음' : '있음'} → 확인 뒤 복원 ${done1.status} ${done1.data?.result ?? done1.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done1)} · 기록에 없는 ID ${absent.status} 멈춤`;
       // ② 변조 → 복원
       const changed = await authed(app, 'PUT', `/api/notes/${entry.id}`, b.token, { body: { title: '변조된 가상 제목', body: '변조된 가상 내용' } });
       const plan2 = await preview(entry.id);
-      const done2 = await authed(app, 'POST', restorePath(entry.id), b.token);
+      const done2 = await authed(app, 'POST', restorePath(entry.id), b.token, { headers: { 'X-Restore-Confirm': plan2.data?.backupLabel ?? '' } });
       const othersAfter = await snapshotOthers(entry.id);
-      out.tamper = `B 실제 요청: 변조 ${changed.status} → 미리보기(버전 ${plan2.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan2.data?.changes ?? []).join(',') || '-'}) → 복원 ${done2.status} ${done2.data?.result ?? done2.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done2)} · B의 다른 메모 ${othersBefore.size}건 ${othersSame(othersBefore, othersAfter) ? '그대로' : '바뀜'}`;
+      out.tamper = `B 실제 요청: 변조 ${changed.status} → 미리보기(버전 ${plan2.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan2.data?.changes ?? []).join(',') || '-'}) → 확인 뒤 복원 ${done2.status} ${done2.data?.result ?? done2.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done2)} · B의 다른 메모 ${othersBefore.size}건 ${othersSame(othersBefore, othersAfter) ? '그대로' : '바뀜'}`;
     }
   } catch (error) {
     out.drill = out.drill ?? `복원 연습 중 오류: ${String(error?.name ?? 'error')}`;
@@ -282,7 +285,10 @@ async function liveRestoreChecks(app, config) {
     const ownerBody = await authed(app, 'POST', restorePath(target), b.token, { body: { owner_id: '00000000-0000-4000-8000-000000000001' } });
     const ghost = await authed(app, 'PUT', '/api/notes/00000000-0000-4000-8000-0000000000aa', b.token, { body: { title: 'x', body: '' } });
     const anon = await authed(app, 'GET', '/api/notes', null);
-    let aPart = ' · A 정상 요청 미실행(A 비밀값 없음)';
+    const forgedList = await authed(app, 'GET', '/api/notes', 'eyJhbGciOiJub25lIn0.eyJzdWIiOiJmYWtlIn0.forged');
+    const publicData = await authed(app, 'GET', '/data.json', null);
+    const publicNotes = Array.isArray(publicData.data) ? publicData.data.length : Array.isArray(publicData.data?.notes) ? publicData.data.notes.length : 0;
+    let aPart = ' · A 미실행(비밀값 없음)';
     let bToA = '';
     if (aSession?.token && aNote) {
       const bRead = await authed(app, 'GET', `/api/notes/${aNote.id}`, b.token);
@@ -292,14 +298,14 @@ async function liveRestoreChecks(app, config) {
       const aList2 = await authed(app, 'GET', '/api/notes', aSession.token);
       const aRead = await authed(app, 'GET', `/api/notes/${aNote.id}`, aSession.token);
       const aSame = aRead.status === 200 && contentSha256(aRead.data.title, aRead.data.body) === aBefore;
-      aPart = ` · A 목록 ${aList2.status} · A 메모 읽기 ${aRead.status}(내용 ${aSame ? '그대로' : '바뀜'})`;
-      bToA = ` · B의 A 메모 읽기 ${bRead.status}·수정 ${bPut.status}·삭제 ${bDel.status}·복원 ${bRestore.status}`;
+      aPart = ` · A 목록 ${aList2.status}·메모 ${aRead.status}(${aSame ? '그대로' : '바뀜'})`;
+      bToA = ` · [4] B→A 메모 읽기 ${bRead.status}·수정 ${bPut.status}·삭제 ${bDel.status}·복원 ${bRestore.status}`;
       out.cross = `B 실제 요청으로 A 메모: 읽기 ${bRead.status} · 수정 ${bPut.status} · 삭제 ${bDel.status} · 복원 ${bRestore.status} → A가 다시 읽기 ${aRead.status}, 내용 ${aSame ? '그대로' : '바뀜'}`;
       out.crossZone = `B 실제 요청: A 메모 읽기 ${bRead.status} · 수정 ${bPut.status} / 학생 B의 공지 목록 ${notices.status} · 공지 수정 ${noticeWrite.status}`;
     } else if (A.email && A.password) {
-      aPart = ` · A 정상 요청 미실행(A 로그인 ${aSession?.status ?? '-'} 또는 A 메모 없음)`;
+      aPart = ` · A 미실행(로그인 ${aSession?.status ?? '-'} 또는 메모 없음)`;
     }
-    out.retest = `복구 뒤 실제 요청 · 정상: B 목록 ${own.status}${one ? ` · B 복원한 메모 읽기 ${one.status}` : ''}${aPart} / 금지: 공지 ${notices.status}${bToA} · 쿼리 ${query.status} · 본문 owner_id ${ownerBody.status} · 없는 메모 ${ghost.status} · 비로그인 ${anon.status}`;
+    out.retest = `복구 뒤 실제 요청 · 정상: B 목록 ${own.status}${one ? `·복원 메모 ${one.status}` : ''}${aPart} / 금지: [1·2] /data.json ${publicData.status}(메모 ${publicNotes}건) · [3] 비로그인 ${anon.status}·위조 토큰 ${forgedList.status}${bToA} · [5] 쿼리 ${query.status}·본문 owner_id ${ownerBody.status} · [8] 공지 ${notices.status}·없는 메모 ${ghost.status}`;
   } catch (error) {
     out.retest = `재시험 중 오류: ${String(error?.name ?? 'error')}`;
   }
@@ -372,7 +378,7 @@ async function restoreChecks(app, config) {
     ],
     last: [
       { attackId: 'post_restore_retest',
-        expected: '복구 뒤 정상(B·A 자기 목록·메모 읽기 200)은 유지, 금지(공지 403, B의 A 메모 404, 쿼리·본문 owner_id 400, 없는 메모 404, 비로그인 401)는 거부',
+        expected: '복구 뒤 1~9단계 다시: 정상(B·A 자기 목록·메모 200) 유지, 금지([1·2] 공개 data.json 메모 없음, [3] 비로그인·위조 401, [4] B→A 404, [5] 쿼리·본문 owner_id 400, [8] 공지 403) 거부. [6·7·9]는 판정기·탐지 줄',
         observed: live.retest },
     ],
     cross: live.cross,

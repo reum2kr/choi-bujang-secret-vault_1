@@ -3,8 +3,10 @@
 //   1) 로그인 토큰으로 요청자를 확인합니다. 브라우저가 보낸 owner_id·userId·내용은 받지 않습니다(본문은 비어 있어야 함, 쿼리 거부).
 //   2) 사본을 다시 읽어, 침해 전에 검증해 커밋한 기록(backup/notes-manifest.json)과 ID·소유자·내용 해시를 대조합니다.
 //      기록에 없거나(사본 없음) 하나라도 다르면(검증 실패) 아무것도 쓰지 않고 멈춥니다(404·409).
-//   3) 미리보기(X-Restore-Preview: 1)면 복원할 버전과 바뀔 항목만 돌려주고 끝냅니다(쓰기 없음).
-//   4) 그 ID 한 건만 넣거나 고친 뒤, 다시 읽어 ID·소유자·내용 해시가 기록과 같은지 확인합니다. 다른 메모는 건드리지 않습니다.
+//   3) 실행 전에 복원할 버전과 바뀔 항목을 보여 줍니다. 머리글 X-Restore-Confirm에 그 버전을 적어 다시 보내기 전에는
+//      (또는 X-Restore-Preview: 1이면) 미리보기만 돌려주고 아무것도 쓰지 않습니다.
+//   4) 확인을 받으면 그 ID 한 건만 넣거나 고친 뒤, 다시 읽어 ID·소유자·내용 해시가 기록과 같은지 확인합니다.
+//      이 검증이 실패하면 쓰기 전 상태로 되돌리고 멈춥니다. 다른 메모는 건드리지 않습니다.
 //   5) 결과를 restore_audit에 한 줄 덧붙입니다(고치기·지우기 불가). 응답과 로그에 메모 본문·토큰·이메일은 넣지 않습니다.
 import { contentSha256, ownerSha256, verifyCopy, verifyRestored } from '../../../lib/backup-verify.mjs';
 import { UUID, fail, pathId, requireLogin, send } from '../../../lib/notes-server.mjs';
@@ -48,7 +50,8 @@ export default async function handler(request, response) {
   }
   const noteId = id.toLowerCase();
   markResource(response, 'notes', noteId);
-  const preview = request.headers?.['x-restore-preview'] === '1';
+  const confirmLabel = typeof request.headers?.['x-restore-confirm'] === 'string' ? request.headers['x-restore-confirm'] : null;
+  const preview = request.headers?.['x-restore-preview'] === '1' || !confirmLabel;
 
   // 2) 사본 다시 읽기 → 침해 전 검증 기록과 대조. 실패하면 여기서 멈춤(쓰기 없음).
   const { data: copy, error: copyError } = await db.from('notes_backup')
@@ -80,14 +83,15 @@ export default async function handler(request, response) {
   const changes = !current ? ['note']
     : [current.title !== copy.title ? 'title' : null, current.body !== copy.body ? 'body' : null].filter(Boolean);
 
-  // 3) 미리보기: 복원할 버전과 바뀔 항목만 보여 주고 끝냄
-  if (preview) {
-    await audit(db, { note_id: noteId, actor_id: userId, result: 'previewed', detail: label });
-    return send(response, 200, {
-      id: noteId, result: 'preview', backupLabel: label, verified: true,
+  // 3) 미리보기: 복원할 버전과 바뀔 항목만 보여 주고 끝냄. 확인한 버전이 사본 버전과 다르면 쓰지 않음.
+  if (preview || confirmLabel !== label) {
+    await audit(db, { note_id: noteId, actor_id: userId, result: preview ? 'previewed' : 'stopped_confirm_mismatch', detail: label });
+    return send(response, preview ? 200 : 409, {
+      id: noteId, result: preview ? 'preview' : 'confirm_mismatch', backupLabel: label, verified: true,
       contentSha256: entry.content_sha256,
       currentSha256: current ? contentSha256(current.title, current.body) : null,
       changes,
+      confirmWith: { header: 'X-Restore-Confirm', value: label },
     });
   }
 
@@ -112,12 +116,20 @@ export default async function handler(request, response) {
   const { data: after, error: afterError } = await db.from('notes')
     .select('id, owner_id, title, body').eq('id', noteId).eq('owner_id', userId).maybeSingle();
   const verified = !afterError && verifyRestored(after, entry);
-  if (!verified) result = 'restore_verify_failed';
+  if (!verified && result === 'restored') {
+    // 쓰기 뒤 검증 실패: 쓰기 전 상태로 되돌립니다(새로 넣었으면 지우고, 고쳤으면 원래 제목·내용으로).
+    const undo = !current
+      ? await db.from('notes').delete().eq('id', noteId).eq('owner_id', userId)
+      : await db.from('notes').update({ title: current.title, body: current.body }).eq('id', noteId).eq('owner_id', userId);
+    result = undo.error ? 'restore_verify_failed_undo_failed' : 'restore_verify_failed_undone';
+  } else if (!verified) {
+    result = 'restore_verify_failed';
+  }
 
   // 5) 감사 기록
   const audited = await audit(db, { note_id: noteId, actor_id: userId, result, detail: label });
   console.info(`restore result=${result} audited=${audited}`);
-  if (!verified) return fail(response, 500, 'RESTORE_VERIFY_FAILED', '되살린 메모가 검증 기록과 같은지 확인하지 못했습니다.');
+  if (!verified) return fail(response, 500, 'RESTORE_VERIFY_FAILED', '되살린 메모가 검증 기록과 달라 쓰기 전 상태로 되돌리고 멈췄습니다.');
   return send(response, 200, {
     id: noteId, result, backupLabel: label,
     idMatches: true, ownerMatches: true, contentHashMatches: true,

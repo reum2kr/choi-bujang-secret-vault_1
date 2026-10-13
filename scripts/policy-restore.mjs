@@ -47,19 +47,18 @@ export async function verifySnapshot(options = {}) {
   const actual = sha256(bytes);
   if (actual !== manifest.sha256) stop(`사본 지문이 다릅니다(기록 ${manifest.sha256.slice(0, 12)}…, 실제 ${actual.slice(0, 12)}…). 복원을 중단합니다.`);
 
-  // Git 기록 대조: 기록된 커밋의 src/decider.mjs와 바이트가 같아야 합니다. Git 기록이 없으면 미실행으로 표시합니다.
-  let gitCheck = '미실행(Git 기록 없음)';
-  if (typeof manifest.sourceCommit === 'string' && /^[a-f0-9]{40}$/u.test(manifest.sourceCommit)) {
-    let original = null;
-    try {
-      original = execFileSync('git', ['show', `${manifest.sourceCommit}:src/decider.mjs`],
-        { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] });
-    } catch { /* 얕은 복제 등으로 기록이 없을 때 */ }
-    if (original) {
-      if (sha256(original) !== manifest.sha256) stop(`사본이 커밋 ${manifest.sourceCommit.slice(0, 7)}의 판정기와 다릅니다. 복원을 중단합니다.`);
-      gitCheck = `커밋 ${manifest.sourceCommit.slice(0, 7)}의 src/decider.mjs와 같음`;
-    }
+  // Git 기록 대조: 기록된 커밋의 src/decider.mjs와 바이트가 같아야 합니다. Git 기록을 읽을 수 없으면 검증을 건너뛰지 않고 중단합니다.
+  if (typeof manifest.sourceCommit !== 'string' || !/^[a-f0-9]{40}$/u.test(manifest.sourceCommit)) {
+    stop('manifest.json에 사본을 만든 커밋이 없어 Git 기록으로 검증할 수 없습니다. 복원을 중단합니다.');
   }
+  let original = null;
+  try {
+    original = execFileSync('git', ['show', `${manifest.sourceCommit}:src/decider.mjs`],
+      { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch { /* 아래에서 중단 */ }
+  if (!original) stop(`커밋 ${manifest.sourceCommit.slice(0, 7)}의 Git 기록을 읽을 수 없어 사본을 검증하지 못했습니다. 복원을 중단합니다.`);
+  if (sha256(original) !== manifest.sha256) stop(`사본이 커밋 ${manifest.sourceCommit.slice(0, 7)}의 판정기와 다릅니다. 복원을 중단합니다.`);
+  const gitCheck = `커밋 ${manifest.sourceCommit.slice(0, 7)}의 src/decider.mjs와 같음`;
 
   // 안전 요청 묶음: 사본은 모든 정상·금지 요청에 기대한 답을 해야 합니다.
   const snapshot = await loadDecider(snapshotPath);
@@ -151,18 +150,24 @@ export async function restorePolicy(targetPath, confirm, options = {}) {
   };
   if (resolve(targetPath) === OPERATING_POLICY) stop('실제 운영 정책(src/decider.mjs)은 되돌리지 않습니다.');
   if (!d.identical) {
+    const previous = readFileSync(targetPath);
     writeFileSync(targetPath, d.safe.bytes); // 시험 정책 이 파일 하나만 씁니다.
     const after = readFileSync(targetPath);
     const reloaded = await loadDecider(targetPath);
     const recheck = await runProbes(reloaded.decide);
     const bad = recheck.filter((p) => p.decision !== p.expected);
-    entry.result = sha256(after) === d.safe.manifest.sha256 && !bad.length ? 'restored' : 'restore_verify_failed';
+    if (sha256(after) === d.safe.manifest.sha256 && !bad.length) {
+      entry.result = 'restored';
+    } else {
+      writeFileSync(targetPath, previous); // 쓰기 뒤 검증 실패: 원래 파일로 되돌리고 멈춥니다.
+      entry.result = 'restore_verify_failed_undone';
+    }
   }
   const operatingAfter = existsSync(OPERATING_POLICY) ? sha256(readFileSync(OPERATING_POLICY)) : null;
   entry.operatingPolicyUnchanged = operatingAfter === d.operatingSha256;
   appendFileSync(AUDIT, `${JSON.stringify(entry)}\n`, { flag: 'a' });
   process.stdout.write(`\n복원 결과: ${entry.result} · 감사 기록 policy/audit.jsonl에 한 줄 추가\n`);
-  if (entry.result === 'restore_verify_failed') stop('복원 뒤 검증이 실패했습니다. 파일을 확인하세요.');
+  if (entry.result !== 'restored' && entry.result !== 'already_matches') stop('복원 뒤 검증이 실패해 원래 파일로 되돌리고 멈췄습니다.');
   return { restored: entry.result === 'restored' };
 }
 
