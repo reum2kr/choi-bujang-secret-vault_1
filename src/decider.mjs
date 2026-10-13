@@ -23,6 +23,11 @@ const ZONE_ROUTES = Object.freeze({
   // 강사 수정은 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
   'PUT /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
 });
+// 구역별로 받아들이는 엔진 서비스 이름. 메모 경로는 notes 서비스만, 공지 경로는 notes(같은 자료실)·notices만.
+const SERVICE_OK = Object.freeze({
+  notes: (service) => service === 'notes',
+  notices: (service) => service === 'notes' || service === 'notices',
+});
 const RESERVED_IDS = new Set(['export', 'import', 'all', 'admin', 'bulk', 'download', 'search', 'new', 'me']);
 const ID_SEGMENT = /^[A-Za-z0-9_-]{1,64}$/u;
 
@@ -34,6 +39,8 @@ export function matchZone(request) {
   const shape = rawShape.replace(/^\/api(?=\/)/u, '');
   const entry = ZONE_ROUTES[`${method} ${shape}`];
   if (!entry) return null;
+  // 엔진이 확인한 서비스가 다른 구역을 가리키면 거부합니다(예: service 'notices'로 메모 경로 요청).
+  if (!SERVICE_OK[entry.zone](request.service)) return null;
   const path = request.path.replace(/^\/api(?=\/)/u, '');
   const parts = path.split('/');
   const shapeParts = shape.split('/');

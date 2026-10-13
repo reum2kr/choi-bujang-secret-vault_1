@@ -2,7 +2,7 @@
 // PUT /api/notices/:id : 강사만 {title, body}로 수정. 일반 학생은 403
 // 8단계 제작 3: 강사 여부는 DB의 instructors 표에 저장된 사용자 ID로만 판단합니다.
 //   화면 메뉴나 요청 본문의 role·isInstructor 같은 값은 믿지 않습니다.
-import { UUID, dbError, fail, invalidNote, readBody, requireLogin, send } from '../../lib/notes-server.mjs';
+import { UUID, dbError, fail, invalidNote, pathId, readBody, requireLogin, send } from '../../lib/notes-server.mjs';
 import { logDeny, markResource } from '../../lib/zones.mjs';
 
 const notFound = (response) => fail(response, 404, 'NOT_FOUND', '공지를 찾을 수 없습니다.');
@@ -22,7 +22,11 @@ export default async function handler(request, response) {
   if (!login) return;
   const { db, userId } = login;
 
-  const id = String(request.query?.id ?? '');
+  const { id, query } = pathId(request);
+  if (query) {
+    logDeny('notices', request.method, 'query_not_allowed');
+    return fail(response, 400, 'QUERY_NOT_ALLOWED', '한 건 주소에는 쿼리를 붙일 수 없습니다.');
+  }
   if (!UUID.test(id)) {
     logDeny('notices', request.method, 'bad_id');
     return notFound(response);

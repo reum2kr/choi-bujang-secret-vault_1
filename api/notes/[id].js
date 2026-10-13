@@ -4,7 +4,7 @@
 // 4단계: 서버가 토큰으로 확인한 사용자 ID와 DB의 owner_id를 비교합니다.
 //   - URL·쿼리·본문의 owner_id는 믿지 않습니다. owner_id는 이 API로 바꿀 수 없습니다.
 //   - 남의 메모는 "없는 메모"와 똑같이 404로 거부해서 존재 여부도 알려 주지 않습니다.
-import { UUID, dbError, fail, invalidNote, readBody, requireLogin, send } from '../../lib/notes-server.mjs';
+import { UUID, dbError, fail, invalidNote, pathId, readBody, requireLogin, send } from '../../lib/notes-server.mjs';
 import { logDeny, markResource } from '../../lib/zones.mjs';
 
 const notFound = (response) => fail(response, 404, 'NOT_FOUND', '메모를 찾을 수 없습니다.');
@@ -24,7 +24,11 @@ export default async function handler(request, response) {
   if (!login) return;
   const { db, userId } = login;
 
-  const id = String(request.query?.id ?? '');
+  const { id, query } = pathId(request);
+  if (query) {
+    logDeny('notes', request.method, 'query_not_allowed');
+    return fail(response, 400, 'QUERY_NOT_ALLOWED', '한 건 주소에는 쿼리를 붙일 수 없습니다.');
+  }
   if (!UUID.test(id)) {
     logDeny('notes', request.method, 'bad_id');
     return notFound(response);
