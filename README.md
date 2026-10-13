@@ -240,9 +240,9 @@
 
 ### 보조: 판정기 코드 사본 (`npm run policy:diff`)
 
-- 판정기 코드도 같은 방식으로 사본(`policy/safe/decider.zone-v8.mjs`, 9단계 운영 판정기와 같음)을 두고, 시험 정책 `policy/test/decider.mjs`만 비교·복원합니다.
-- 사본 검증은 SHA-256, Git 기록, 정상·금지 가상 요청 15건으로 합니다. Git 기록을 읽을 수 없으면 중단합니다.
-- 실제 운영 판정기 `src/decider.mjs`는 지문만 읽고 대상으로 받지 않습니다. 이번 단계에서 9단계 제출 때와 같은 내용 그대로 두었습니다.
+- 판정기 코드도 같은 방식으로 사본(`policy/safe/decider.zone-v10r1.mjs`, 커밋 `abd2c3e`의 운영 판정기와 같음)을 두고, 시험 정책 `policy/test/decider.mjs`만 비교·복원합니다.
+- 사본 검증은 SHA-256, Git 기록, 정상·금지 가상 요청 18건으로 합니다. Git 기록을 읽을 수 없으면 중단합니다.
+- 실제 운영 판정기 `src/decider.mjs`는 이 도구의 대상이 아닙니다(지문만 읽음).
 
 ### 제작 2: 안전 정책으로 되돌리기 (`notes_policy_restore`)
 
@@ -262,7 +262,7 @@
   - 사본·감사 표 고치기·지우기 거부, 브라우저 역할 함수 실행 거부.
 - 실제 Supabase에서 실행한 결과는 아래 「학생이 SQL Editor에서 실행한 결과」에 적었습니다.
 
-#### 보조 도구 기록 (`policy/audit.jsonl`)
+#### 보조 도구 기록 (`policy/audit.jsonl`, 덧붙이기만 함 — 셋째 줄: 판정기 사본 `zone-v10r1`로 시험 정책 복원)
 
 - `--confirm <버전>` 없이 실행하면 미리보기만 하고 아무것도 바꾸지 않습니다.
 - 확인을 붙이면 시험 정책 한 파일만 사본으로 바꾸고, 지문과 안전 요청을 다시 검사합니다. 이 검사가 실패하면 원래 파일로 되돌리고 멈춥니다. `src/decider.mjs`, `src/detect.mjs`, `xdr/` 규칙은 바꾸지 않습니다.
@@ -296,7 +296,7 @@
   - 멈춤: B의 A 메모 복원 404, 사본 표의 내용과 해시를 함께 바꿈 409, 사본 소유자를 바꿈 409, 기록 밖 사본 404, 사본 행 없음 404, 같은 ID가 다른 주인에게 있음 409.
   - 거부: 비로그인·위조 토큰 401, 본문 `owner_id`·쿼리 바꿔치기 400.
   - 확인: 확인 머리글 없는 요청은 미리보기만(쓰기 없음), 확인 버전이 틀리면 409, 쓰기 뒤 검증이 실패하면 새로 넣은 행을 지우고 500.
-- 실제 운영 정책인 판정기(`src/decider.mjs`)는 이번 단계에서 바꾸지 않습니다(9단계 제출 커밋 `3754498`과 같은 내용). 복원 경로는 브라우저 화면이 기존처럼 서버 함수를 바로 부릅니다.
+- 판정기(`src/decider.mjs`) `restore_verified_policy`: 엔진을 거치는 복구 요청(`POST /restore/notes/:id`, 같은 뜻의 `POST /notes/:id/restore`)은 자기 메모 구역 조건(로그인 주체, 등록 기기, 이상 사건이면 `step_up`)에 더해, 엔진이 알려 준 정책 버전 `policyRevision`이 침해 전에 검증한 안전 정책 버전(`1`, `policy/safe/manifest.json`)일 때만 허용합니다. 버전이 바뀌었거나 없으면 복원하지 않고 `deny · policy_unverified`로 멈춥니다. 다른 경로의 판정은 9단계와 같습니다.
 
 ### 제작 4: 복구 뒤 재시험
 
@@ -315,7 +315,7 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 | 6 | 4 | 금지: B의 A 메모 읽기·수정·삭제·복원(404), A 메모는 그대로 | `cross_user_note_read` | A·B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 7 | 6·7 | 정상: 등록 기기 allow, 재로그인 뒤 allow / 금지: 미등록 기기 deny, 복합 이상 step_up | `registered_device_read`, `unregistered_device_read`, `anomalous_context_read` | 항상 실행(판정기 가상 요청) |
 | 8 | 7 | 엔진의 실제 재로그인 흐름 | `real_step_up_block` | 미실행 |
-| 9 | 8 | 정상: 자기 메모 한 건 / 금지: 전체 목록, 공지, 기능 경로, 경로표 밖, 비로그인 공지 | `zone_decider_rules`, `anonymous_notice_read` | 항상 실행 |
+| 9 | 8·10 | 정상: 자기 메모 한 건, 검증 정책 버전의 복구 / 금지: 바뀐 정책 버전의 복구, 전체 목록, 공지, 기능 경로, 경로표 밖, 비로그인 공지 | `zone_decider_rules`, `anonymous_notice_read` | 항상 실행 |
 | 10 | 8 | 금지: 메뉴를 우회한 직접 API 요청(B의 A 메모, 학생의 공지 목록·수정) | `zone_api_cross_owner` | A·B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 11 | 9 | 정상 기기 유지 / 도플갱어 기기 회수 제안 | `detect_normal_device`, `detect_doppelganger_burst` | 항상 실행(가상 사건) |
 | 12 | 9 | 엔진의 실제 회수 집행 | `live_revocation` | 미실행 |
@@ -332,7 +332,7 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 ## 10단계 저장점
 
 - `step` 10. 기존 `allowedRoutes`에 `POST /api/restore/notes/:id`를 더하고, `restoreRoute`를 같은 값으로 넣었습니다. `identityProvider`, `originalApiUrl`은 그대로입니다.
-- 판정기 `RULE_IDS`는 9단계 그대로 실제 구현한 7개입니다. 운영 판정기는 9단계 제출 때와 같고, 안전 정책 사본 `zone-v8`과 같습니다.
+- 판정기 `RULE_IDS`는 실제 구현한 8개입니다: 9단계의 7개 + `restore_verified_policy`. 판정기는 보조 사본 `zone-v10r1`과 같습니다.
 - `src/attack-check.mjs`의 10단계 점검은 위 표의 1~4번과 13번이며, 6·10번은 A·B 비밀값이 있으면 실제 요청 결과로 바뀝니다. 제출 점검 20개 한도 때문에 8단계 판정기 구역 가상 요청 여섯 건은 결과를 그대로 둔 채 한 줄(`zone_decider_rules`)로 합쳤습니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법:
   1. SQL Editor에서 `supabase/10-backup.sql` ①~③ 실행 → ④로 검증 기록 값을 뽑아 `backup/notes-manifest.json`에 넣고 커밋 → `supabase/10-policy-backup.sql` 실행 → `supabase/10-policy-restore-test.sql` 실행(감사 표에 `pass`)
@@ -349,6 +349,6 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
   - 「실행 전에 버전과 바뀔 항목을 보여 줍니다」: 메모 복원 API도 정책 복원처럼 확인(`X-Restore-Confirm`) 없이는 쓰지 않습니다.
   - 「검증에 실패했는데 복원」을 막기 위해, 메모 복원과 정책 복원 모두 쓰기 뒤 검증이 실패하면 쓰기 전 상태로 되돌리고 멈추며, 정책 사본은 Git 기록을 읽을 수 없으면 중단합니다.
   - 복구 뒤 재시험에 1·2단계(공개 `/data.json`)를 더하고 결과마다 단계 번호를 붙였습니다.
-  - 「실제 운영 정책은 건드리지 않습니다」: 중간에 운영 판정기 `src/decider.mjs`에 복원 경로 규칙을 넣었다가(커밋 `ddb7e78`), 9단계 제출 때와 같은 내용으로 되돌렸습니다. 안전 정책 사본도 그 판정기를 검증한 `zone-v8`로 바로잡았습니다.
+  - 판정기의 복구 경로: 처음에는 경로표에 없어 늘 거부했고(사본을 다시 읽어 복원할 길이 없음), 중간(`ddb7e78`)에는 정책 버전과 상관없이 허용했습니다(검증 실패에도 복원). 지금은 검증한 정책 버전(`policyRevision` 1)일 때만 허용하고, 아니면 멈춥니다(`abd2c3e`).
 - 실제로 실행한 복원 시험 결과는 `backup/restore-test-log.md`에 적었습니다.
 - 안전 정책을 판정기 코드로만 다루고 있었습니다. 과제의 안전 정책은 DB의 RLS 정책(4단계)이라, SQL로 사본·검증·차이·복원·복원 시험을 만들었습니다(`supabase/10-policy-backup.sql`, `supabase/10-policy-restore-test.sql`).
