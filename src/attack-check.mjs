@@ -14,9 +14,9 @@ function appUrl(config) {
   return app;
 }
 
-async function anonymousGet(app, path, headers = {}) {
+async function anonymousGet(app, path, headers = {}, method = 'GET') {
   const response = await fetch(new URL(path, app), {
-    headers, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000),
+    method, headers, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000),
   });
   let notes = null;
   let error = null;
@@ -118,7 +118,7 @@ async function stepUpChecks({ compact = false } = {}) {
 
 // 8단계: 판정기 구역 규칙(가상 요청)과, 실제 배포의 공지 구역 비로그인 요청 결과만 적습니다.
 // 로그인 토큰이 필요한 A/B·강사 요청은 이 스크립트로 보내지 않아 미실행으로 남깁니다.
-async function zoneChecks(app) {
+async function zoneChecks(app, { compact = false } = {}) {
   const { decide } = await import('./decider.mjs');
   const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
   const { normal } = fixtureRequests();
@@ -131,6 +131,22 @@ async function zoneChecks(app) {
   const exportPath = await ask({ path: '/notes/export' });
   const unknown = await ask({ route: 'GET /admin', path: '/admin' });
   const notices = await anonymousGet(app, '/api/notices');
+  const noticeLine = { attackId: 'anonymous_notice_read',
+    expected: '로그인 없는 /api/notices 요청은 401·403 JSON 오류로 거부',
+    observed: `비로그인 /api/notices 요청 결과 HTTP ${notices.status}${notices.error ? ` ${notices.error}` : ''}${notices.notes === null ? ', 자료 없음' : `, ${notices.notes}건`}` };
+  const crossLine = { attackId: 'zone_api_cross_owner',
+    expected: '메뉴를 우회한 직접 API 요청: B의 A 메모 GET·PUT은 404, 학생의 공지 GET·PUT은 403 INSTRUCTOR_REQUIRED',
+    observed: '미실행: 로그인 토큰이 필요해 이 스크립트로는 보내지 않음. 자료 API 소유자·강사 대조는 가짜 DB 로컬 시험으로 확인' };
+  if (compact) {
+    // 10단계부터는 제출 점검 20개 한도 때문에 판정기 구역 가상 요청 여섯 건을 한 줄로 합쳐 적습니다(결과는 그대로 모두 기록).
+    return [
+      { attackId: 'zone_decider_rules',
+        expected: '자기 메모 한 건 allow · 메모 전체 목록 deny(zone_notes_no_bulk) · 학생의 공지 수정·읽기 deny(instructor_required) · export 기능 경로·경로표 밖 경로 deny(route_not_allowed)',
+        observed: `판정기 응답 자기 메모 ${said(own)} / 전체 목록 ${said(bulkList)} / 공지 수정 ${said(noticeWrite)} / 공지 읽기 ${said(noticeRead)} / export ${said(exportPath)} / GET /admin ${said(unknown)}` },
+      noticeLine,
+      crossLine,
+    ];
+  }
   return [
     { attackId: 'zone_own_note_read',
       expected: '등록 기기·로그인 사용자의 자기 메모 구역(GET /notes/:id)은 allow',
@@ -150,12 +166,51 @@ async function zoneChecks(app) {
     { attackId: 'zone_unknown_route',
       expected: '경로표에 없는 경로(GET /admin)는 deny · route_not_allowed',
       observed: `판정기 응답 ${said(unknown)}` },
-    { attackId: 'anonymous_notice_read',
-      expected: '로그인 없는 /api/notices 요청은 401·403 JSON 오류로 거부',
-      observed: `비로그인 /api/notices 요청 결과 HTTP ${notices.status}${notices.error ? ` ${notices.error}` : ''}${notices.notes === null ? ', 자료 없음' : `, ${notices.notes}건`}` },
-    { attackId: 'zone_api_cross_owner',
-      expected: '메뉴를 우회한 직접 API 요청: B의 A 메모 GET·PUT은 404, 학생의 공지 GET·PUT은 403 INSTRUCTOR_REQUIRED',
-      observed: '미실행: 로그인 토큰이 필요해 이 스크립트로는 보내지 않음. 자료 API 소유자·강사 대조는 가짜 DB 로컬 시험으로 확인' },
+    noticeLine,
+    crossLine,
+  ];
+}
+
+// 10단계: 복원 경로와 안전 정책 사본을 실제로 확인한 결과만 적습니다.
+async function restoreChecks(app, config) {
+  if (typeof config.restoreRoute !== 'string' || !/^POST \/api\/[A-Za-z0-9/_-]+\/:id$/u.test(config.restoreRoute)) {
+    throw new Error('aleph.config.json의 restoreRoute를 먼저 넣어 주세요.');
+  }
+  const path = config.restoreRoute.slice(5).replace(':id', '00000000-0000-4000-8000-000000000001');
+  const describe = (r) => `HTTP ${r.status}${r.error ? ` ${r.error}` : ''}`;
+  const denied = (r) => r.status === 401 || r.status === 403;
+  const anonymous = await anonymousGet(app, path, {}, 'POST');
+  const forged = await anonymousGet(app, path, {
+    Authorization: 'Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJmYWtlIn0.forged',
+  }, 'POST');
+  let policyLine;
+  let diffLine;
+  try {
+    const { diffPolicy } = await import('../scripts/policy-restore.mjs');
+    const d = await diffPolicy(new URL('./decider.mjs', import.meta.url).pathname);
+    policyLine = `사본 ${d.safe.manifest.version} 지문 확인 · Git 대조 ${d.safe.gitCheck} · 안전 요청 ${d.safe.probes.length}건 모두 기대대로`;
+    diffLine = d.identical ? '현재 src/decider.mjs가 사본과 같음(변경 범위 없음)'
+      : `현재 정책이 사본과 다름: 줄 ${d.text.removed}개 빠짐·${d.text.added}개 들어옴, 응답이 달라지는 요청 ${d.changedProbes.length}건`;
+  } catch (error) {
+    policyLine = `검증 중단: ${String(error?.message ?? error).slice(0, 120)}`;
+    diffLine = '미실행: 사본 검증이 중단되어 비교하지 않음';
+  }
+  return [
+    { attackId: 'restore_anonymous',
+      expected: `로그인 없는 복원 요청(${config.restoreRoute})은 401·403으로 거부`,
+      observed: `비로그인 POST ${path} 결과 ${describe(anonymous)}${denied(anonymous) ? ' (거부됨)' : ' (거부되지 않음)'}` },
+    { attackId: 'restore_forged_token',
+      expected: '서명이 없는 위조 토큰의 복원 요청은 401·403으로 거부',
+      observed: `위조 토큰 POST ${path} 결과 ${describe(forged)}${denied(forged) ? ' (거부됨)' : ' (거부되지 않음)'}` },
+    { attackId: 'policy_snapshot_verified',
+      expected: '침해 전 안전 정책 사본을 다시 읽어 지문·Git 기록·안전 요청 묶음으로 검증, 실패하면 중단',
+      observed: policyLine },
+    { attackId: 'policy_current_vs_snapshot',
+      expected: '현재 시험 정책과 안전 정책 사본의 차이(복원할 버전·변경 범위)를 실행 전에 표시',
+      observed: diffLine },
+    { attackId: 'restore_b_own_note',
+      expected: 'B 로그인으로 사본의 자기 메모 한 건을 복원하면 ID·소유자·내용 지문이 사본과 같고, A 메모와 감사 기록은 그대로',
+      observed: '미실행: 로그인 토큰이 필요해 이 스크립트로는 보내지 않음. 학생이 B 화면에서 직접 확인, API는 가짜 DB 로컬 시험으로 확인' },
   ];
 }
 
@@ -284,7 +339,7 @@ export async function runAttackChecks(config) {
     ];
   }
 
-  if (config.step >= 5 && config.step <= 9) {
+  if (config.step >= 5 && config.step <= 10) {
     // 실제로 보낸 요청의 결과만 적습니다. 메모 본문·토큰·이메일은 기록하지 않습니다.
     if (typeof config.originalApiUrl !== 'string' || !config.originalApiUrl.startsWith('https://')) {
       throw new Error('aleph.config.json의 originalApiUrl을 먼저 넣어 주세요.');
@@ -320,8 +375,9 @@ export async function runAttackChecks(config) {
         observed: '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
       ...(config.step >= 6 ? await deviceChecks() : []),
       ...(config.step >= 7 ? await stepUpChecks({ compact: config.step >= 9 }) : []),
-      ...(config.step >= 8 ? await zoneChecks(app) : []),
+      ...(config.step >= 8 ? await zoneChecks(app, { compact: config.step >= 10 }) : []),
       ...(config.step >= 9 ? await detectChecks() : []),
+      ...(config.step >= 10 ? await restoreChecks(app, config) : []),
     ];
   }
 

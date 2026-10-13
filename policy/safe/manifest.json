@@ -1,0 +1,18 @@
+{
+  "schema": "aleph.policy.snapshot.v1",
+  "version": "zone-v8",
+  "description": "침해 전에 검증한 판정기 안전 정책 사본. 8단계·9단계 심판 통과 때의 src/decider.mjs와 같은 내용입니다.",
+  "snapshotPath": "policy/safe/decider.zone-v8.mjs",
+  "targetPath": "src/decider.mjs",
+  "sourceCommit": "71d22b8da42e2ffc2d48334c40784fd56e2e3534",
+  "sha256": "c889e2f61777152fd0ee8d7995ca231a76a7af3b312feb7255eee0c32146bb2c",
+  "ruleIds": [
+    "starter.deny",
+    "device_registered",
+    "step_up_required",
+    "zone_route_allowlist",
+    "zone_notes_self",
+    "zone_notes_no_bulk",
+    "zone_notices_instructor"
+  ]
+}
