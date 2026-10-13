@@ -5,6 +5,7 @@
 //   - URL·쿼리·본문의 owner_id는 믿지 않습니다. owner_id는 이 API로 바꿀 수 없습니다.
 //   - 남의 메모는 "없는 메모"와 똑같이 404로 거부해서 존재 여부도 알려 주지 않습니다.
 import { UUID, dbError, fail, invalidNote, readBody, requireLogin, send } from '../../lib/notes-server.mjs';
+import { logDeny, markResource } from '../../lib/zones.mjs';
 
 const notFound = (response) => fail(response, 404, 'NOT_FOUND', '메모를 찾을 수 없습니다.');
 
@@ -24,12 +25,20 @@ export default async function handler(request, response) {
   const { db, userId } = login;
 
   const id = String(request.query?.id ?? '');
-  if (!UUID.test(id)) return notFound(response);
+  if (!UUID.test(id)) {
+    logDeny('notes', request.method, 'bad_id');
+    return notFound(response);
+  }
+  markResource(response, 'notes', id);
 
-  // 기존 행의 소유자가 본인인지 먼저 확인합니다(GET·PUT·DELETE 공통).
+  // 8단계 제작 3: 검증된 사용자와 저장된 owner_id를 다시 대조합니다(GET·PUT·DELETE 공통).
+  // 화면 메뉴나 요청 본문의 role·owner_id는 보지 않습니다.
   const { data: existing, error: findError } = await findOwned(db, id, userId);
   if (findError) return dbError(response, findError);
-  if (!existing || existing.owner_id !== userId) return notFound(response);
+  if (!existing || existing.owner_id !== userId) {
+    logDeny('notes', request.method, 'not_owner_or_missing');
+    return notFound(response);
+  }
 
   if (request.method === 'GET') {
     return send(response, 200, { id: existing.id, title: existing.title, body: existing.body });
@@ -42,6 +51,7 @@ export default async function handler(request, response) {
     // 새 행의 소유자도 본인이어야 합니다. 다른 소유자로 바꾸려는 요청은 거부합니다.
     for (const key of ['owner_id', 'ownerId', 'userId', 'user_id']) {
       if (key in body && body[key] !== userId) {
+        logDeny('notes', request.method, 'owner_change');
         return fail(response, 403, 'OWNER_CHANGE_FORBIDDEN', '메모의 소유자는 바꿀 수 없습니다.');
       }
     }

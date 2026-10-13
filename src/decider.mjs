@@ -4,10 +4,49 @@
 // 요청 본문의 userId, role, 기기 키, 토큰, 브라우저가 보낸 위치·헤더는 믿거나 저장하지 않습니다.
 // 6단계 device_registered: 등록된 기기의 내 자료실 읽기만 허용합니다.
 // 7단계 step_up_required: 평소와 다른 시각 + 처음 보는 네트워크 + 갑작스러운 대량 읽기가 겹치면 다시 로그인을 요구합니다.
-export const RULE_IDS = Object.freeze(['starter.deny', 'device_registered', 'step_up_required']);
+// 8단계 zone_*: 자원을 메모(notes)·공지(notices) 구역으로 나누고, 엔진이 확인한 사용자·기기·메서드·정확한 경로로만 판단합니다.
+export const RULE_IDS = Object.freeze([
+  'starter.deny', 'device_registered', 'step_up_required',
+  'zone_route_allowlist', 'zone_notes_self', 'zone_notices_read', 'zone_notices_instructor',
+]);
 
-// 내 자료실 읽기 경로 (allowedRoutes의 GET 경로와 같은 모양, /api 접두사는 있어도 되고 없어도 됨)
-const READ_ROUTES = /^GET \/(?:api\/)?notes(?:\/:id)?$/u;
+// ── 8단계 제작 2: 구역별 허용 경로표 ─────────────────────────────────────────────
+// 정확히 이 메서드+경로 모양만 압니다(/api 접두사는 있어도 되고 없어도 됨). 나머지는 모두 거부합니다.
+// 경로의 마지막 칸은 자료 ID뿐이며, 쿼리로 기능을 고르지 않습니다.
+const ZONE_ROUTES = Object.freeze({
+  'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
+  'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
+  'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
+  'GET /notices':      { zone: 'notices', ruleId: 'zone_notices_read',       access: 'allow' },
+  'GET /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_read',       access: 'allow' },
+  // 강사 공지 수정: 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 일반 학생으로 보고 거부합니다.
+  // 강사 수정은 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
+  'PUT /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
+});
+const RESERVED_IDS = new Set(['export', 'import', 'all', 'admin', 'bulk', 'download', 'search', 'new', 'me']);
+const ID_SEGMENT = /^[A-Za-z0-9_-]{1,64}$/u;
+
+// route와 path가 서로 맞는지까지 봅니다. 예: route 'GET /notes/:id' 이면 path는 '/notes/<자료 ID>' 하나뿐.
+export function matchZone(request) {
+  if (typeof request?.route !== 'string' || typeof request?.path !== 'string') return null;
+  const [method, rawShape, extra] = request.route.split(' ');
+  if (extra !== undefined || method !== request.method || typeof rawShape !== 'string') return null;
+  const shape = rawShape.replace(/^\/api(?=\/)/u, '');
+  const entry = ZONE_ROUTES[`${method} ${shape}`];
+  if (!entry) return null;
+  const path = request.path.replace(/^\/api(?=\/)/u, '');
+  const parts = path.split('/');
+  const shapeParts = shape.split('/');
+  if (parts.length !== shapeParts.length) return null;
+  for (let i = 0; i < parts.length; i += 1) {
+    if (shapeParts[i] === ':id') {
+      if (!ID_SEGMENT.test(parts[i]) || RESERVED_IDS.has(parts[i].toLowerCase())) return null;
+    } else if (parts[i] !== shapeParts[i]) {
+      return null;
+    }
+  }
+  return entry;
+}
 
 // ── 7단계 제작 1: 엔진이 넘긴 접속 정보만 골라 씁니다 ──────────────────────────
 // 엔진이 출처를 밝힌 값만 믿습니다. 'judge_fixture'는 심판의 가상 사건이고 실제 위치 증거가 아닙니다.
@@ -72,15 +111,29 @@ export async function decide(request) {
     return answer(request, 'deny', 'device_not_registered', 'device_registered');
   }
   const loggedIn = typeof request.subjectId === 'string' && request.subjectId.length > 0;
-  if (loggedIn && request.method === 'GET' && typeof request.route === 'string' && READ_ROUTES.test(request.route)) {
-    // step_up_required: 복합 이상 사건이면, 엔진이 확인한 새 로그인이 있을 때까지 자료를 주지 않습니다.
-    // 영구 차단(deny)이 아니라 다시 로그인(step_up)이며, 사유는 reasonCode·ruleIds로 남깁니다.
-    const ctx = readContext(request);
-    if (anomaly(ctx) && !(ctx.stepUp.verified && ctx.stepUp.authAgeSeconds <= FRESH_LOGIN_SECONDS)) {
-      return answer(request, 'step_up', 'step_up_required', 'step_up_required');
-    }
-    return answer(request, 'allow', 'approved', 'device_registered');
+  if (!loggedIn) {
+    // 엔진이 확인한 로그인 주체가 없으면 시작 틀의 기본 거부를 그대로 둡니다.
+    return answer(request, 'deny', 'starter_not_ready', 'starter.deny');
   }
-  // 그 밖의 요청은 시작 틀의 기본 거부를 그대로 둡니다.
-  return answer(request, 'deny', 'starter_not_ready', 'starter.deny');
+
+  // zone_route_allowlist: 경로표에 없는 경로, route·path가 어긋난 요청, 쿼리가 붙은 요청은 거부합니다.
+  const zone = matchZone(request);
+  if (!zone || request.queryLength !== 0) {
+    return answer(request, 'deny', 'route_not_allowed', 'zone_route_allowlist');
+  }
+
+  // zone_notices_instructor: 엔진이 확인한 강사 역할이 계약에 없으므로 공지 수정은 거부합니다.
+  if (zone.access === 'instructor_required') {
+    return answer(request, 'deny', 'instructor_required', zone.ruleId);
+  }
+
+  // step_up_required: 복합 이상 사건이면, 엔진이 확인한 새 로그인이 있을 때까지 자료를 주지 않습니다.
+  // 영구 차단(deny)이 아니라 다시 로그인(step_up)이며, 사유는 reasonCode·ruleIds로 남깁니다.
+  const ctx = readContext(request);
+  if (anomaly(ctx) && !(ctx.stepUp.verified && ctx.stepUp.authAgeSeconds <= FRESH_LOGIN_SECONDS)) {
+    return answer(request, 'step_up', 'step_up_required', 'step_up_required');
+  }
+  // 메모 구역은 "자기 메모" 구역입니다. 판정기는 소유자를 알 수 없으므로(계약에 소유자 정보 없음)
+  // 자료 API가 검증된 사용자와 저장된 owner_id를 다시 대조해 남의 메모는 404로 거부합니다.
+  return { ...answer(request, 'allow', 'approved', 'device_registered'), ruleIds: ['device_registered', zone.ruleId] };
 }

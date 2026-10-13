@@ -3,6 +3,7 @@
 // owner_id는 서버가 확인한 사용자 ID로만 채웁니다.
 import { randomUUID } from 'node:crypto';
 import { UUID, dbError, fail, invalidNote, readBody, requireLogin, send } from '../../lib/notes-server.mjs';
+import { markResource } from '../../lib/zones.mjs';
 
 export default async function handler(request, response) {
   if (request.method !== 'GET' && request.method !== 'POST') {
@@ -13,6 +14,7 @@ export default async function handler(request, response) {
   if (!login) return;
 
   if (request.method === 'GET') {
+    markResource(response, 'notes');
     const { data, error } = await login.db
       .from('notes')
       .select('id, title, body')
@@ -34,5 +36,6 @@ export default async function handler(request, response) {
     .insert({ id, title: body.title.trim(), body: body.body, owner_id: login.userId });
   if (error?.code === '23505') return fail(response, 409, 'ID_TAKEN', '이미 있는 id입니다.');
   if (error) return dbError(response, error);
+  markResource(response, 'notes', id);
   return send(response, 201, { id });
 }
