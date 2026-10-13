@@ -160,16 +160,20 @@ export async function decide(request) {
   return { ...answer(request, 'allow', 'approved', 'device_registered'), ruleIds: ['device_registered', zone.ruleId] };
 }
 
-// 주체 ID 형식: 영문 접두사 + 구분자(_ - : .) 로 시작하는 ID(예: learner_a). 같은 접두사를 쓰는 다른 ID가
-// 경로의 자료 ID 자리에 오면 다른 사용자의 구역을 가리키는 것으로 봅니다. UUID 같은 일반 자료 ID에는 적용하지 않습니다.
+// 요청 하나 안에서 남의 구역 알아보기: 경로의 자료 ID 자리에 요청자와 다른 주체 ID가 오면 다른 사용자의 구역입니다.
+// 주체 ID와 모양이 다른 일반 자료 ID(예: demo)에는 적용하지 않습니다.
 const SUBJECT_PREFIX = /^([A-Za-z][A-Za-z]*[_\-:.])/u;
 function namesOtherSubject(request) {
   const subject = String(request.subjectId);
   const id = decodeLast(request.path);
-  if (!id || id === subject) return false;
+  if (!id || id.toLowerCase() === subject.toLowerCase()) return false;
+  // (1) 같은 영문 접두사로 시작하는 다른 주체 ID (예: learner_a ↔ learner_b)
   const prefix = SUBJECT_PREFIX.exec(subject)?.[1];
-  return Boolean(prefix) && id.toLowerCase().startsWith(prefix.toLowerCase());
+  if (prefix && id.toLowerCase().startsWith(prefix.toLowerCase())) return true;
+  // (2) 요청자 주체 ID와 모양(길이·구분자 위치)이 같은데 값만 다른 ID (예: UUID·해시 형식의 다른 주체)
+  return shapeOf(id) === shapeOf(subject);
 }
+const shapeOf = (value) => String(value).replace(/[A-Za-z0-9]/gu, 'x');
 function decodeLast(path) {
   const last = String(path).split('/').filter(Boolean).pop() ?? '';
   try { return decodeURIComponent(last); } catch { return ''; }
