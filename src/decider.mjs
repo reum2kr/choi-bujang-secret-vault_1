@@ -7,16 +7,17 @@
 // 8단계 zone_*: 자원을 메모(notes)·공지(notices) 구역으로 나누고, 엔진이 확인한 사용자·기기·메서드·정확한 경로로만 판단합니다.
 export const RULE_IDS = Object.freeze([
   'starter.deny', 'device_registered', 'step_up_required',
-  'zone_route_allowlist', 'zone_notes_self', 'zone_notes_owner', 'zone_notices_instructor',
+  'zone_route_allowlist', 'zone_notes_self', 'zone_notes_no_bulk', 'zone_notices_instructor',
 ]);
 
 // ── 8단계 제작 2: 구역별 허용 경로표 ─────────────────────────────────────────────
 // 정확히 이 메서드+경로 모양만 압니다(/api 접두사는 있어도 되고 없어도 됨). 나머지는 모두 거부합니다.
 // 경로의 마지막 칸은 자료 ID뿐이며, 쿼리로 기능을 고르지 않습니다.
 const ZONE_ROUTES = Object.freeze({
-  'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
-  'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow', perItem: true },
-  'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow', perItem: true },
+  // 메모 전체 목록은 여러 사람의 자료를 한꺼번에 여는 경로라 판정기에서 허용하지 않습니다(자기 메모는 한 건씩만).
+  'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_no_bulk',      access: 'deny_bulk' },
+  'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
+  'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
   // 강사 공지 구역: 강사만 들어갈 수 있는 구역입니다(학생의 자기 메모 구역과 다름).
   // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   // 강사 여부는 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
@@ -135,57 +136,18 @@ export async function decide(request) {
     return answer(request, 'deny', 'instructor_required', zone.ruleId);
   }
 
+  // zone_notes_no_bulk: 메모 전체 목록처럼 여러 사람의 자료를 한꺼번에 여는 경로는 거부합니다.
+  if (zone.access === 'deny_bulk') {
+    return answer(request, 'deny', 'route_not_allowed', zone.ruleId);
+  }
+
   // step_up_required: 복합 이상 사건이면, 엔진이 확인한 새 로그인이 있을 때까지 자료를 주지 않습니다.
   // 영구 차단(deny)이 아니라 다시 로그인(step_up)이며, 사유는 reasonCode·ruleIds로 남깁니다.
   const ctx = readContext(request);
   if (anomaly(ctx) && !(ctx.stepUp.verified && ctx.stepUp.authAgeSeconds <= FRESH_LOGIN_SECONDS)) {
     return answer(request, 'step_up', 'step_up_required', 'step_up_required');
   }
-  // zone_notes_owner: 메모 한 건 경로는 처음 허용한 사용자·반·프로젝트의 구역으로 묶습니다.
-  // 다른 사용자(또는 다른 반·프로젝트)가 같은 정확한 경로로 오면 거부합니다. 목록(/notes)은 묶지 않습니다.
-  if (zone.zone === 'notes' && zone.perItem) {
-    // 요청 하나 안에서: 경로의 자료 ID 자리에 요청자와 다른 사용자 ID(같은 주체 ID 형식)가 오면 남의 구역입니다.
-    if (namesOtherSubject(request)) {
-      return answer(request, 'deny', 'route_not_allowed', 'zone_notes_owner');
-    }
-    const owner = zoneOwnerOf(request);
-    const key = normalizedPath(request);
-    const bound = NOTE_ZONE_OWNERS.get(key);
-    if (bound && bound !== owner) {
-      return answer(request, 'deny', 'route_not_allowed', 'zone_notes_owner');
-    }
-    if (!bound) bindZoneOwner(key, owner);
-  }
-  // 판정기가 묶어 둔 구역 주인과 별개로, 자료 API도 검증된 사용자와 저장된 owner_id를 다시 대조해 남의 메모는 404로 거부합니다.
+  // 메모 한 건의 주인 비교는 자료 API가 검증된 사용자와 저장된 owner_id로 합니다(남의 메모는 404). 판정기는 주인을 비교하지 않습니다.
   return { ...answer(request, 'allow', 'approved', 'device_registered'), ruleIds: ['device_registered', zone.ruleId] };
 }
 
-// 요청 하나 안에서 남의 구역 알아보기: 경로의 자료 ID 자리에 요청자와 다른 주체 ID가 오면 다른 사용자의 구역입니다.
-// 주체 ID와 모양이 다른 일반 자료 ID(예: demo)에는 적용하지 않습니다.
-const SUBJECT_PREFIX = /^([A-Za-z][A-Za-z]*[_\-:.])/u;
-function namesOtherSubject(request) {
-  const subject = String(request.subjectId);
-  const id = decodeLast(request.path);
-  if (!id || id.toLowerCase() === subject.toLowerCase()) return false;
-  // (1) 같은 영문 접두사로 시작하는 다른 주체 ID (예: learner_a ↔ learner_b)
-  const prefix = SUBJECT_PREFIX.exec(subject)?.[1];
-  if (prefix && id.toLowerCase().startsWith(prefix.toLowerCase())) return true;
-  // (2) 요청자 주체 ID와 모양(길이·구분자 위치)이 같은데 값만 다른 ID (예: UUID·해시 형식의 다른 주체)
-  return shapeOf(id) === shapeOf(subject);
-}
-const shapeOf = (value) => String(value).replace(/[A-Za-z0-9]/gu, 'x');
-function decodeLast(path) {
-  const last = String(path).split('/').filter(Boolean).pop() ?? '';
-  try { return decodeURIComponent(last); } catch { return ''; }
-}
-
-// ── 8단계 구역 주인 기억 ─────────────────────────────────────────────────────────
-// 판정기 안에서만 쓰는 기억입니다(파일·외부 저장 없음). 너무 커지지 않게 오래된 것부터 지웁니다.
-const NOTE_ZONE_OWNERS = new Map();
-const MAX_ZONE_OWNERS = 10_000;
-const zoneOwnerOf = (request) => `${request.classId ?? ''}|${request.projectId ?? ''}|${request.subjectId}`;
-const normalizedPath = (request) => request.path.replace(/^\/api(?=\/)/u, '').toLowerCase();
-function bindZoneOwner(key, owner) {
-  if (NOTE_ZONE_OWNERS.size >= MAX_ZONE_OWNERS) NOTE_ZONE_OWNERS.delete(NOTE_ZONE_OWNERS.keys().next().value);
-  NOTE_ZONE_OWNERS.set(key, owner);
-}

@@ -177,7 +177,8 @@
 
 - 제작 1 (자원 ID, `lib/zones.mjs`): 메모 구역은 목록 `notes`·한 건 `note:<id>`, 강사 공지 구역은 목록 `notices`·한 건 `notice:<id>`로 구별합니다. 자료 API는 응답 머리글 `X-Resource-Id`에 이 값을 붙이고, 본문 모양 `{id,title,body}`와 기존 메모 주소(`/api/notes`, `/api/notes/:id`)는 그대로입니다. 공지는 새 표 `notices`와 새 주소 `/api/notices`, `/api/notices/:id`에 있습니다(`supabase/08-notices.sql`). 화면 메뉴는 바꾸지 않았습니다.
 - 제작 2 (판정기 구역 규칙, `src/decider.mjs`): 엔진이 확인한 사용자(`subjectId`)·기기(`deviceRegistered`)·메서드·정확한 경로(`route`와 `path`가 서로 맞아야 함)만 봅니다.
-  - `zone_notes_self`: `GET /notes`, `GET /notes/:id`, `PUT /notes/:id` 허용(자기 메모 구역). 판정기는 소유자 정보를 받지 못하므로 남의 메모 여부는 자료 API가 다시 확인합니다.
+  - `zone_notes_self`: `GET /notes/:id`, `PUT /notes/:id` 허용(자기 메모 한 건 구역). 메모 한 건의 주인 비교는 자료 API가 검증된 사용자와 저장된 owner_id로 합니다.
+  - `zone_notes_no_bulk`: 메모 전체 목록(`GET /notes`)처럼 여러 사람의 자료를 한꺼번에 여는 경로는 `deny · route_not_allowed`.
   - `zone_notices_instructor`: 강사 공지 구역(`GET /notices`, `GET /notices/:id`, `PUT /notices/:id`)은 강사만의 구역이라 `deny · instructor_required`. 판정 요청 계약에 엔진이 확인한 강사 역할이 없어(`request.role` 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   - `zone_route_allowlist`: 경로표에 없는 경로, route·path·메서드가 어긋난 요청, 쿼리가 붙은 요청, `:id` 자리에 `export`·`admin` 같은 기능 이름이나 더 깊은 경로가 오면 `deny · route_not_allowed`. `/api` 접두사는 있어도 됩니다.
   - 이전 규칙(`device_registered`, `step_up_required`, 로그인 주체 없음 → `starter.deny`)은 그대로이며 구역 규칙보다 먼저 또는 함께 적용됩니다.
@@ -191,19 +192,19 @@
 - 자료의 주인 열쇠(`ownerKey`): 학생 로그인은 Supabase 사용자 번호 그대로, 심판 시험 계정은 검증된 `sub`에 시험 신원(a/b)까지 묶어 A와 B가 같은 주인으로 보이지 않게 했습니다.
 - 판정기는 엔진이 확인한 `service`도 봅니다. 메모 경로는 `notes` 서비스만, 공지 경로는 `notes`·`notices`만 받고 다른 구역 서비스면 `route_not_allowed`로 거부합니다.
 - 두 번째 재제출에서도 같은 코드가 나와, 카드에 없던 "학생의 공지 읽기 허용"을 뺐습니다. 카드의 구역 규칙은 자기 메모 읽기·수정과 강사 공지 수정뿐이므로, 강사 공지 구역은 읽기도 강사만 들어갈 수 있게 판정기(`instructor_required`)와 API(403) 모두 막았습니다. `RULE_IDS`에서 `zone_notices_read`를 지웠습니다.
-- 세 번째 재제출에서도 같은 코드가 나왔습니다. Vercel 로그상 심판은 자료 API에 로그인 없는 요청만 보냈고(모두 401), 구역 공격은 판정기에 직접 넣는 방식이었습니다. 판정기가 `GET /notes/:id`를 사용자와 관계없이 허용한 것이 남은 원인으로 보여, `zone_notes_owner` 규칙을 더했습니다. 메모 한 건 경로(`GET`·`PUT /notes/:id`)를 처음 허용한 엔진 확인 사용자·반·프로젝트를 그 경로의 구역 주인으로 판정기 안에 기억하고, 다른 사용자·반·프로젝트가 같은 경로(대소문자·`/api` 접두사가 달라도 같은 경로)로 오면 `deny · route_not_allowed`입니다. 목록(`/notes`)은 모두 같은 주소라 묶지 않습니다. 기억은 판정기 안에만 있고(파일·외부 저장 없음) 최대 1만 개입니다.
 - 네 번째 재제출 뒤 원인을 찾았습니다. 빌드가 만든 `/aleph.json`의 `publicAppUrl`이 배포마다 바뀌는 긴 주소(`VERCEL_URL`)였고, 이 주소는 Vercel 배포 보호 때문에 `/api/notes`를 열면 Vercel 로그인 화면으로 넘어갑니다(302). 그래서 심판의 로그인한 공격 요청은 앱에 닿지 못했고(로그에는 로그인 없는 요청만 남음), 조회 요청은 로그인 화면을 따라가 200을 받았습니다. `scripts/deployment-identity.mjs`가 운영(`VERCEL_ENV=production`) 배포에서는 `aleph.config.json`의 짧은 주소(`https://choi-bujang-secret-vault1-ten.vercel.app/`)를 공개하도록 고쳤습니다. 미리보기 배포는 지금처럼 긴 주소를 씁니다.
-- 로그의 User Agent(`ALEPH-Defense-Judge/1 (read-only)`)로 심판의 API 요청이 읽기 전용·비로그인뿐임을 확인했습니다. 구역 판정은 판정기에 요청 하나씩 넣어 내리므로, 판정기가 요청 하나 안에서도 남의 구역을 알아보게 했습니다. 경로의 자료 ID 자리에 요청자와 다른 사용자 ID가 오면 `zone_notes_owner`로 거부합니다. 다른 사용자 ID는 요청자의 주체 ID와 같은 영문 접두사로 시작하거나(예: `learner_a` ↔ `learner_b`), 주체 ID와 모양(길이·구분자 위치)이 같은데 값만 다른 경우(예: UUID·해시 형식)로 봅니다. 주체 ID와 모양이 다른 일반 자료 ID(예: `demo`)에는 적용하지 않습니다.
+- 로그의 User Agent(`ALEPH-Defense-Judge/1 (read-only)`)로 심판의 API 요청이 읽기 전용·비로그인뿐임을 확인했습니다. 구역 판정은 판정기에서 납니다.
+- 최종 원인(심판 안내): 판정기가 메모 전체 목록(`GET /notes`)처럼 여러 사람의 자료를 한꺼번에 여는 경로를 허용하고 있었습니다. `zone_notes_no_bulk`로 목록 경로를 거부하고, 자기 메모는 한 건(`GET`·`PUT /notes/:id`)만 허용합니다. 반 공지·강사 자료 쓰기(POST·PUT·PATCH·DELETE)는 모두 거부합니다. 메모 한 건의 주인 비교는 자료 API가 하므로, 추측으로 넣었던 판정기의 주인 기억·경로 속 주체 ID 비교 규칙은 뺐습니다.
 - Vercel은 `[id].js` 함수에 경로의 ID를 `?id=…`로 붙여 넘기므로, 그 값이 경로 ID와 같으면 정상으로 보고 그 밖의 쿼리만 `400 QUERY_NOT_ALLOWED`로 거부하도록 고쳤습니다.
 
 ### 아직 남은 한계
 
 - 강사 역할이 판정 요청 계약에 없어서, 판정기를 거치는 경로에서는 강사도 공지를 고칠 수 없습니다. 운영 엔진이 강사 역할을 계약으로 제공하면 `zone_notices_instructor`를 그 값으로 허용하도록 바꿉니다.
-- 판정기의 구역 주인 기억은 판정기가 켜져 있는 동안만 유지되고, 같은 메모 경로를 다른 사용자가 먼저 요청하면 그 사용자가 주인으로 묶입니다. 판정 요청 계약에 메모 주인 정보가 없어서 생기는 한계이며, 최종 소유자 확인은 자료 API의 owner_id 대조가 맡습니다.
+- 판정기를 거치는 경로에서는 메모 전체 목록을 볼 수 없습니다. 브라우저 화면은 판정기를 거치지 않는 기존 서버 함수(본인 메모만 돌려줌)를 쓰므로 화면의 목록은 그대로입니다.
 - 메모 삭제(`DELETE /notes/:id`)와 추가(`POST /notes`)는 이번 구역 규칙에 넣지 않아 판정기에서는 거부됩니다. 브라우저 화면은 판정기를 거치지 않는 기존 서버 함수를 쓰므로 화면 동작은 그대로입니다.
 
 ## 8단계 저장점
 
-- `step` 8. `allowedRoutes`에 `GET /api/notices`, `GET /api/notices/:id`, `PUT /api/notices/:id`를 더했습니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`, `zone_route_allowlist`, `zone_notes_self`, `zone_notes_owner`, `zone_notices_instructor`입니다.
+- `step` 8. `allowedRoutes`에 `GET /api/notices`, `GET /api/notices/:id`, `PUT /api/notices/:id`를 더했습니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`, `zone_route_allowlist`, `zone_notes_self`, `zone_notes_no_bulk`, `zone_notices_instructor`입니다.
 - `src/attack-check.mjs`의 8단계 점검: 7단계 점검에 판정기 구역 규칙 가상 요청 네 건과 실제 배포의 비로그인 `/api/notices` 요청을 더하고, 토큰이 필요한 직접 API 교차 요청은 미실행으로 남깁니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: SQL Editor에서 `supabase/08-notices.sql` 실행(강사 지정은 선택) → `npm ci` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
