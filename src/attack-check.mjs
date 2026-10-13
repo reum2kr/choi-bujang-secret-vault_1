@@ -76,7 +76,7 @@ async function deviceChecks() {
 
 // 7단계: 판정기에 정상·복합 이상·재로그인 뒤·위조 출처 가상 사건을 직접 넣어 본 결과만 적습니다.
 // 실제 재로그인 확인(제공 엔진이 새 로그인 시각을 검증하는 흐름)은 이 저장소에서 보낼 수 없어 미실행으로 남깁니다.
-async function stepUpChecks() {
+async function stepUpChecks({ compact = false } = {}) {
   const { decide } = await import('./decider.mjs');
   const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
   const { normal, suspicious } = fixtureRequests();
@@ -86,6 +86,17 @@ async function stepUpChecks() {
   const odd = await decide(fresh(suspicious));
   const again = await decide(fresh({ ...suspicious, stepUp: { verified: true, authAgeSeconds: 60 } }));
   const forged = await decide(fresh({ ...suspicious, signals: { ...suspicious.signals, source: 'client_header' } }));
+  if (compact) {
+    // 9단계부터는 제출 점검 20개 한도 때문에 7단계 가상 사건 네 건을 한 줄로 합쳐 적습니다(결과는 그대로 모두 기록).
+    return [
+      { attackId: 'anomalous_context_read',
+        expected: '정상 사건 allow · 새벽+처음 보는 네트워크+5분 내 대량 읽기는 step_up · 재로그인(60초 전) 뒤 allow · 클라이언트 헤더 출처는 복합 규칙 미적용',
+        observed: `판정기 응답 정상 ${said(ok)} / 복합 ${said(odd)} / 재로그인 뒤 ${said(again)} / client_header 출처 ${said(forged)}` },
+      { attackId: 'real_step_up_block',
+        expected: '제공 엔진이 새 로그인 시각을 검증할 때 재로그인 전 자료 차단·새 요청 허용 실측',
+        observed: '미실행: 이 저장소에서는 엔진의 재로그인 검증 흐름을 보낼 수 없음. 판정기 응답만 가상 사건으로 확인' },
+    ];
+  }
   return [
     { attackId: 'normal_context_read',
       expected: '평소 시각·평소 네트워크·대량 읽기 없음 가상 사건은 allow',
@@ -166,14 +177,8 @@ async function detectChecks() {
   const doppel = detect(mix(reads(50, 'device_home', 'usual'), reads(150, 'device_other', 'unusual')));
   return [
     { attackId: 'detect_normal_device',
-      expected: '평소 네트워크의 정상 기기는 조회가 많아도 observe(회수 제안 없음)',
-      observed: `가상 사건 200건 탐지 결과 ${said(normal)}` },
-    { attackId: 'detect_region_only',
-      expected: '지역만 다르고 네트워크는 평소와 같으면 observe',
-      observed: `지역만 바꾼 가상 사건 200건 탐지 결과 ${said(regionOnly)}` },
-    { attackId: 'detect_unusual_network_only',
-      expected: '처음 보는 네트워크라도 조회가 적으면(20건) observe',
-      observed: `가상 사건 20건 탐지 결과 ${said(fewUnusual)}` },
+      expected: '평소 네트워크의 정상 기기 다량 조회, 지역만 다른 조회, 처음 보는 네트워크의 적은 조회(20건)는 모두 observe(회수 제안 없음)',
+      observed: `가상 사건 탐지 결과 정상 기기 200건 ${said(normal)} / 지역만 다름 200건 ${said(regionOnly)} / 처음 보는 네트워크 20건 ${said(fewUnusual)}` },
     { attackId: 'detect_doppelganger_burst',
       expected: '같은 사용자의 다른 기기가 처음 보는 네트워크에서 10분 안에 120건을 넘게 조회하면 그 기기 하나만 propose_revocation · burst_read, 정상 기기는 유지',
       observed: `정상 기기 50건 + 다른 기기 150건 탐지 결과 ${said(doppel)}` },
@@ -314,7 +319,7 @@ export async function runAttackChecks(config) {
         expected: 'B 로그인으로 A 메모 id를 GET·PUT·DELETE하면 404로 거부되고 A 메모는 그대로',
         observed: '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
       ...(config.step >= 6 ? await deviceChecks() : []),
-      ...(config.step >= 7 ? await stepUpChecks() : []),
+      ...(config.step >= 7 ? await stepUpChecks({ compact: config.step >= 9 }) : []),
       ...(config.step >= 8 ? await zoneChecks(app) : []),
       ...(config.step >= 9 ? await detectChecks() : []),
     ];

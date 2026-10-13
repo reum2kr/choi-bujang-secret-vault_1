@@ -224,5 +224,5 @@
 ## 9단계 저장점
 
 - `step` 9. `identityProvider`, `allowedRoutes`, `originalApiUrl`은 8단계 그대로입니다. 판정기 `RULE_IDS`도 8단계 그대로입니다(판정기는 바꾸지 않았음). 탐지 규칙 이름은 `src/detect.mjs`의 `DETECT_RULE_IDS`(`detect_burst_read`)에 따로 둡니다.
-- `src/attack-check.mjs`의 9단계 점검: 8단계 점검에 탐지 함수 가상 사건 네 건(정상 기기, 지역만 다름, 처음 보는 네트워크의 적은 조회, 도플갱어 기기의 다량 조회)을 더하고, 실제 회수 집행은 미실행으로 남깁니다. 심판 판정이 아닙니다.
+- `src/attack-check.mjs`의 9단계 점검: 8단계 점검에 탐지 함수 가상 사건 결과 두 줄(정상 쪽 세 경우를 한 줄로, 도플갱어 기기의 다량 조회 한 줄)과 실제 회수 집행 미실행 한 줄을 더합니다. 제출 점검은 20개까지라, 7단계 가상 사건 네 건은 결과를 그대로 둔 채 한 줄로 합쳤습니다(합계 20개). 심판 판정이 아닙니다.
 - 다시 실행하는 방법: `npm ci` → `npm run detect:test` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
