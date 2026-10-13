@@ -226,3 +226,65 @@
 - `step` 9. `identityProvider`, `allowedRoutes`, `originalApiUrl`은 8단계 그대로입니다. 판정기 `RULE_IDS`도 8단계 그대로입니다(판정기는 바꾸지 않았음). 탐지 규칙 이름은 `src/detect.mjs`의 `DETECT_RULE_IDS`(`detect_burst_read`)에 따로 둡니다.
 - `src/attack-check.mjs`의 9단계 점검: 8단계 점검에 탐지 함수 가상 사건 결과 두 줄(정상 쪽 세 경우를 한 줄로, 도플갱어 기기의 다량 조회 한 줄)과 실제 회수 집행 미실행 한 줄을 더합니다. 제출 점검은 20개까지라, 7단계 가상 사건 네 건은 결과를 그대로 둔 채 한 줄로 합쳤습니다(합계 20개). 심판 판정이 아닙니다.
 - 다시 실행하는 방법: `npm ci` → `npm run detect:test` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
+
+## 10단계 기록: 백업에서 자료실을 되살립니다
+
+복원 경로: 서비스 `notes`, `POST /api/restore/notes/:id` (`aleph.config.json`의 `restoreRoute`, 파일 `api/restore/notes/[id].js`).
+
+## 복구 절차
+
+이 절은 지금 코드가 실제로 하는 일만 적습니다(`api/restore/notes/[id].js`, `lib/backup-verify.mjs`, `lib/policy-pin.mjs`, `public/index.html`, `src/attack-check.mjs`). 복원 경로는 서비스 `notes`의 `POST /api/restore/notes/:id`입니다.
+
+### 1. 백업 검증
+
+1. 복원 전에 백업 사본을 다시 읽습니다.
+   - 정책 사본: `policy/safe/manifest.json`을 다시 읽어 코드에 고정한 SHA-256과 대조하고, 정책 버전(`policyRevision` 1)과 복원 범위(메모 한 건)를 확인합니다.
+   - 메모 사본: Supabase `notes_backup`에서 그 메모의 사본을 다시 읽어 ID·소유자·내용 해시를 확인합니다. 침해 전에 있던 메모는 침해 전 검증 기록 `backup/notes-manifest.json`과, 그 뒤에 만든 메모는 만들 때 DB 트리거(`supabase/10-backup-on-create.sql`)가 남긴 처음 사본의 해시와 대조합니다.
+2. 버전과 바뀔 항목을 화면에 보여 줍니다.
+   - 로그인한 화면의 「백업에서 메모 한 건 복원」에 메모 ID를 넣고 「복원」을 누르면, 먼저 미리보기(쓰기 없음)를 받아 확인 창에 보여 줍니다.
+   - 확인 창 내용: 사본 버전(`pre-incident-10` 또는 `on-create`), 정책 사본 버전(`zone-v10r2`) 검증 결과, 바뀔 항목(메모 전체·제목·내용).
+   - 취소하면 아무것도 바뀌지 않습니다. 같은 미리보기는 `GET /api/restore/notes/:id`로도 받을 수 있습니다.
+3. 사본이 없거나 검증에 실패하면 복원하지 않고 멈춥니다.
+   - 정책 사본 검증 실패: 503 `POLICY_UNVERIFIED`. 메모 자료에 닿기 전에 멈춥니다.
+   - 메모 사본이 없거나 남의 메모: 404. 사본의 ID·소유자·내용 해시가 기준과 다름: 409.
+   - 멈추면 아무것도 쓰지 않고, 화면에는 「복원 실패」가 나옵니다.
+
+### 2. 한 건 복원
+
+1. 경로에 지정한 메모 한 건만 복원합니다. 요청 본문은 비어 있어야 하고 쿼리는 400으로 거부합니다. 주인은 로그인 토큰으로만 정합니다.
+2. 복원 전: 사본의 ID·소유자·내용 해시를 기준(침해 전 검증 기록 또는 처음 사본)과 비교하고, 다르면 복원하지 않습니다(409).
+3. 복원: 그 한 건만 넣거나(지워졌을 때, 같은 ID·주인으로) 제목·내용을 사본 값으로 고칩니다.
+4. 복원 후: 그 한 건을 다시 읽어 ID·소유자·내용 해시를 64자 전체로 사본과 비교합니다. 같을 때만 200 `restored`를 돌려주고, 다르면 쓰기 전 상태로 되돌린 뒤 500으로 멈춥니다.
+5. 다른 메모와 감사 기록은 건드리지 않습니다.
+   - 쓰기(넣기·고치기·되돌리기)는 그 ID와 요청자 주인으로만 한정합니다.
+   - 감사 기록 `restore_audit`에는 덧붙이기만 합니다. 고치기·지우기는 DB 트리거가 막습니다.
+
+### 3. 복원 뒤 재시험
+
+`npm run bundle`(`src/attack-check.mjs`)이 복원 점검을 먼저 하고, 그 뒤에 1~9단계 요청을 실제 배포에 다시 보냅니다. 아래는 2026-10-13 23:29(KST), 커밋 `eb4c6aa` 배포에 실제로 보낸 결과입니다. 시험 계정 B 메모는 `80976c71-b57f-48f4-b3fe-85cfabaae21a`입니다.
+
+| 시험 | 결과 |
+|---|---|
+| 한 건 복원(삭제 뒤) | 200 `restored`. 다시 읽은 ID 같음, 소유자 지문 `1b0784406de5fedebbe8951cdc56914a024bc79f32c8bea05157d03a60965c63` 같음, 내용 해시 `e39ce5818d1bce2bff55abbe161f7e14578836d68513e0f3ba0732679345872f` 같음 |
+| 한 건 복원(변조 뒤) | 200 `restored`. 세 값이 사본과 같음, B의 다른 메모 1건 그대로 |
+| 정상: 내 메모 읽기 | B 목록 200, 복원한 메모 200, A 목록 200, A 메모 200(내용 그대로) → 허용 |
+| 금지: 로그인 없는 읽기 | `/api/notes` 401, 위조 토큰 401, 로그인 없는 복원 401 → 거부 |
+| 금지: 다른 사람 메모 | B가 A 메모 읽기·수정·삭제·복원 모두 404, A 메모 그대로 → 거부 |
+| 금지: 공개 자료·원본 직접 조회 | `/data.json` 404(메모 0건), 원본 자료 경로 직접 조회 401 → 거부 |
+| 금지: 쿼리·본문으로 주인 바꿔치기 | 400 → 거부 |
+| 금지: 다른 구역(공지) | 학생 B의 공지 목록·수정 403, 로그인 없는 공지 401 → 거부 |
+| 금지: 미등록 기기 | 미실행. 판정기 가상 요청만 `deny · device_not_registered` |
+| 금지: 평소와 다른 접속 | 미실행. 판정기 가상 요청만 `step_up` |
+| 도플갱어 기기 회수 | 미실행. 탐지기 가상 사건만 `propose_revocation · burst_read` |
+
+- 미등록 기기, 평소와 다른 접속, 기기 회수는 실제 엔진에 보낼 수 없어 「미실행」으로 둡니다. 가상 요청 결과는 실제 시험 결과가 아닙니다.
+- 같은 날 21:21 Supabase SQL Editor에서 RLS 시험 정책을 사본 `s4-rls-v1`으로 되돌린 시험도 실행했습니다(`policy_restore_test · pass`, 운영 정책 그대로). 그 밖의 실행 기록은 `backup/restore-test-log.md`에 있습니다. 이 기록은 학생의 자기 점검이며 심판 판정이 아닙니다.
+
+## 10단계 저장점
+
+- `step` 10. `allowedRoutes`와 `restoreRoute`에 `POST /api/restore/notes/:id`가 있습니다. `identityProvider`, `originalApiUrl`, `judgeIssuer`는 그대로입니다.
+- 판정기 `RULE_IDS`는 실제 구현한 8개입니다: 9단계의 7개 + `restore_verified_policy`.
+- 다시 실행하는 방법:
+  1. SQL Editor에서 `supabase/10-backup.sql` ①~③ → `supabase/10-backup-on-create.sql` → `supabase/10-policy-backup.sql` → `supabase/10-policy-restore-test.sql`
+  2. (선택) Codespaces 비밀값 `ALEPH_B_EMAIL`·`ALEPH_B_PASSWORD`, `ALEPH_A_EMAIL`·`ALEPH_A_PASSWORD` 등록
+  3. `npm ci` → `npm run policy:diff` → `npm run bundle`
