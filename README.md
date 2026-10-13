@@ -192,6 +192,7 @@
 - 판정기는 엔진이 확인한 `service`도 봅니다. 메모 경로는 `notes` 서비스만, 공지 경로는 `notes`·`notices`만 받고 다른 구역 서비스면 `route_not_allowed`로 거부합니다.
 - 두 번째 재제출에서도 같은 코드가 나와, 카드에 없던 "학생의 공지 읽기 허용"을 뺐습니다. 카드의 구역 규칙은 자기 메모 읽기·수정과 강사 공지 수정뿐이므로, 강사 공지 구역은 읽기도 강사만 들어갈 수 있게 판정기(`instructor_required`)와 API(403) 모두 막았습니다. `RULE_IDS`에서 `zone_notices_read`를 지웠습니다.
 - 세 번째 재제출에서도 같은 코드가 나왔습니다. Vercel 로그상 심판은 자료 API에 로그인 없는 요청만 보냈고(모두 401), 구역 공격은 판정기에 직접 넣는 방식이었습니다. 판정기가 `GET /notes/:id`를 사용자와 관계없이 허용한 것이 남은 원인으로 보여, `zone_notes_owner` 규칙을 더했습니다. 메모 한 건 경로(`GET`·`PUT /notes/:id`)를 처음 허용한 엔진 확인 사용자·반·프로젝트를 그 경로의 구역 주인으로 판정기 안에 기억하고, 다른 사용자·반·프로젝트가 같은 경로(대소문자·`/api` 접두사가 달라도 같은 경로)로 오면 `deny · route_not_allowed`입니다. 목록(`/notes`)은 모두 같은 주소라 묶지 않습니다. 기억은 판정기 안에만 있고(파일·외부 저장 없음) 최대 1만 개입니다.
+- 네 번째 재제출 뒤 원인을 찾았습니다. 빌드가 만든 `/aleph.json`의 `publicAppUrl`이 배포마다 바뀌는 긴 주소(`VERCEL_URL`)였고, 이 주소는 Vercel 배포 보호 때문에 `/api/notes`를 열면 Vercel 로그인 화면으로 넘어갑니다(302). 그래서 심판의 로그인한 공격 요청은 앱에 닿지 못했고(로그에는 로그인 없는 요청만 남음), 조회 요청은 로그인 화면을 따라가 200을 받았습니다. `scripts/deployment-identity.mjs`가 운영(`VERCEL_ENV=production`) 배포에서는 `aleph.config.json`의 짧은 주소(`https://choi-bujang-secret-vault1-ten.vercel.app/`)를 공개하도록 고쳤습니다. 미리보기 배포는 지금처럼 긴 주소를 씁니다.
 
 ### 아직 남은 한계
 

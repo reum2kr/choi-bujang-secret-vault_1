@@ -39,11 +39,24 @@ function publicSettings(config) {
   return settings;
 }
 
+function productionHost(env, config) {
+  if (env.VERCEL_ENV !== 'production') return null;
+  try {
+    const url = new URL(config?.publicAppUrl);
+    if (url.protocol !== 'https:' || url.pathname !== '/' || url.search || url.hash || url.username || url.password) return null;
+    return HOST.test(url.hostname) ? url.hostname : null;
+  } catch {
+    return null;
+  }
+}
+
 export function deploymentIdentity(env, config) {
   const owner = env.VERCEL_GIT_REPO_OWNER;
   const repo = env.VERCEL_GIT_REPO_SLUG;
   const commit = env.VERCEL_GIT_COMMIT_SHA;
-  const host = env.VERCEL_URL;
+  // 8단계 보강: 운영(Production) 배포에서는 보호되지 않은 짧은 주소(aleph.config.json의 publicAppUrl)를 공개합니다.
+  // 배포마다 바뀌는 긴 주소(VERCEL_URL)는 Vercel 배포 보호로 로그인 화면(302)으로 넘어가서, 심판 요청이 앱에 닿지 않습니다.
+  const host = productionHost(env, config) ?? env.VERCEL_URL;
   if (env.VERCEL_GIT_PROVIDER !== 'github' || !OWNER.test(owner || '')
       || !REPO.test(repo || '') || repo === '.' || repo === '..'
       || repo.toLowerCase().endsWith('.git') || !SHA.test(commit || '')
