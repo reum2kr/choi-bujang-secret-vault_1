@@ -229,18 +229,40 @@
 
 ## 10단계 기록: 백업에서 자료실을 되살립니다
 
-### 제작 1: 정책 차이 보기 (`npm run policy:diff`)
+### 제작 1: 안전 정책 사본과 차이 보기 (`supabase/10-policy-backup.sql`)
 
-- **시험 정책**은 `policy/test/decider.mjs`입니다. 실제 운영 정책인 `src/decider.mjs`와 별개의 파일이며, 3차 침공 훈련에서는 이 시험 정책이 바뀌었습니다(커밋 `98daba0`: 전체 목록·공지 구역·미등록 기기 허용).
-- 침해 전에 검증한 안전 정책 사본은 `policy/safe/decider.zone-v8.mjs`, 검증 기록은 `policy/safe/manifest.json`(버전 `zone-v8`)입니다. 사본은 8·9단계 심판을 통과한 운영 판정기 `src/decider.mjs`(커밋 `71d22b8`, 9단계 `3754498`과 같음)와 같은 내용입니다.
-- `scripts/policy-restore.mjs`는 사본을 디스크에서 다시 읽어 세 가지로 검증합니다.
-  1. SHA-256 지문을 기록과 대조
-  2. 기록된 커밋의 판정기와 바이트 대조
-  3. 정상·금지 가상 요청 15건(`policy/probes.mjs`)에 기대한 답을 하는지
-- 사본이나 기록이 없거나 하나라도 실패하면 중단합니다. Git 기록을 읽을 수 없을 때도 검증을 건너뛰지 않고 중단합니다(얕은 복제에서 확인). 통과하면 실행 전에 복원할 버전과 시험 정책의 변경 범위(응답이 달라지는 요청, 줄 차이)를 보여 줍니다.
-- 실제 운영 정책(`src/decider.mjs`)은 지문만 읽어 보여 주고 쓰지 않습니다. 대상으로 지정하면 거부합니다. 운영 반 엔진의 정책 등록부도 건드리지 않습니다.
+- **안전 정책**은 4단계에서 만든 `public.notes` 표의 RLS 정책입니다. RLS가 켜져 있고, 정책 4개(`notes_select_own`·`notes_insert_own`·`notes_update_own`·`notes_delete_own`)가 모두 `authenticated` 역할에 `auth.uid() = owner_id` 조건을 겁니다. 실제 운영 정책은 Supabase에 걸려 있는 이 정책이고, 시험은 SQL Editor에서 이 정책을 대상으로 합니다.
+- 사본 표 `notes_policy_backup`에는 버전, 정책 JSON, SHA-256을 두고, 감사 표 `notes_policy_audit`에는 덧붙이기만 합니다. 두 표 모두 트리거로 고치기·지우기를 막고, 브라우저 역할(`anon`·`authenticated`) 권한은 없습니다.
+- 함수(모두 브라우저 역할 실행 불가):
+  - `notes_policy_capture('s4-rls-v1')`: 지금 정책이 4단계 안전 기준(RLS 켜짐, 정책 4개, 모두 `auth.uid()`·`owner_id` 비교)과 같을 때만 침해 전 사본을 남깁니다. 다르면 멈춥니다.
+  - `notes_policy_backup_verify(버전)`: 사본을 다시 읽어 SHA-256을 다시 계산·대조합니다. 없거나 다르면 예외로 멈춥니다.
+  - `notes_policy_diff(버전)`: 검증된 사본과 지금 정책의 차이만 보여 줍니다(읽기 전용).
 
-### 제작 2: 안전 정책으로 시험 정책 되돌리기 (`npm run policy:restore -- --confirm zone-v8`)
+### 보조: 판정기 코드 사본 (`npm run policy:diff`)
+
+- 판정기 코드도 같은 방식으로 사본(`policy/safe/decider.zone-v8.mjs`, 9단계 운영 판정기와 같음)을 두고, 시험 정책 `policy/test/decider.mjs`만 비교·복원합니다.
+- 사본 검증은 SHA-256, Git 기록, 정상·금지 가상 요청 15건으로 합니다. Git 기록을 읽을 수 없으면 중단합니다.
+- 실제 운영 판정기 `src/decider.mjs`는 지문만 읽고 대상으로 받지 않습니다. 이번 단계에서 9단계 제출 때와 같은 내용 그대로 두었습니다.
+
+### 제작 2: 안전 정책으로 되돌리기 (`notes_policy_restore`)
+
+- `select public.notes_policy_restore('s4-rls-v1', false);`: 복원할 버전과 바뀔 항목만 보여 주고 아무것도 바꾸지 않습니다(감사 기록에 `previewed`).
+- `select public.notes_policy_restore('s4-rls-v1', true);`:
+  1. 사본을 다시 읽어 검증합니다. 사본이 없거나 검증이 실패하면 아무것도 바꾸지 않고 감사 기록(`stopped`)만 남기고 멈춥니다.
+  2. `notes` 표의 정책만 사본대로 되돌립니다. 다른 표의 정책과 사본·감사 기록은 건드리지 않습니다.
+  3. 다시 읽어 사본과 같은지 대조합니다. 다르면 예외로 이 복원 전체를 취소합니다.
+- 복원 시험(`supabase/10-policy-restore-test.sql`, 한 묶음으로 실행되고 실패하면 전부 취소):
+  1. 3차 침공 흉내: 누구나 모든 메모 읽기 정책 추가, 본인 수정 정책 삭제
+  2. 미리보기 → 실행
+  3. 사용자를 바꿔 확인: B로는 A 메모 0건(거부), A로는 자기 메모가 보임(유지)
+  4. 시험용 읽기 권한을 다시 회수(5단계 상태)하고, 결과를 감사 표에 `pass`/`fail`로 기록
+- 로컬 PostgreSQL 16(Supabase 역할·`auth.uid()` 흉내)에서 실행한 결과(제출 묶음 밖):
+  - 시험 `pass`: 침공 상태에서 B가 A 메모 2건을 봤고, 복원 뒤 0건, A는 자기 메모 2건.
+  - 미리보기는 정책을 바꾸지 않음. 없는 버전·변조된 사본은 `stopped`로 멈추고 정책 그대로.
+  - 사본·감사 표 고치기·지우기 거부, 브라우저 역할 함수 실행 거부.
+- 실제 Supabase에서 실행한 결과는 아래 「학생이 SQL Editor에서 실행한 결과」에 적습니다(실행 전에는 미실행).
+
+#### 보조 도구 기록 (`policy/audit.jsonl`)
 
 - `--confirm <버전>` 없이 실행하면 미리보기만 하고 아무것도 바꾸지 않습니다.
 - 확인을 붙이면 시험 정책 한 파일만 사본으로 바꾸고, 지문과 안전 요청을 다시 검사합니다. 이 검사가 실패하면 원래 파일로 되돌리고 멈춥니다. `src/decider.mjs`, `src/detect.mjs`, `xdr/` 규칙은 바꾸지 않습니다.
@@ -285,7 +307,8 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 | 순서 | 단계 | 정상 요청 / 금지 요청 | 제출 묶음 점검 | 실행 여부 |
 |---|---|---|---|---|
 | 1 | 10 | 금지: 비로그인·위조 토큰 복원 요청 | `restore_anonymous` | 항상 실행(실제 배포) |
-| 2 | 10 | 정책 사본 다시 읽기 검증, 실행 전 복원 버전·변경 범위 표시, 변조·없는 사본은 중단 | `policy_snapshot_verified` | 항상 실행 |
+| 0 | 10 | RLS 안전 정책 복원 시험: 침공 흉내 → 미리보기 → 복원 → B로 A 메모 0건·A로 자기 메모 보임 → 감사 표 `pass` | SQL Editor `supabase/10-policy-restore-test.sql` | 학생이 SQL Editor에서 실행(아래 기록), 제출 묶음 밖 |
+| 2 | 10 | 판정기 코드 사본(보조) 다시 읽기 검증, 실행 전 복원 버전·변경 범위 표시, 변조·없는 사본은 중단 | `policy_snapshot_verified` | 항상 실행 |
 | 3 | 10 | B 메모 **삭제** → 미리보기 → 확인 없는 요청은 쓰기 없음 → 확인 뒤 복원 → 다시 읽어 침해 전 기록과 ID·소유자 지문·내용 해시 대조, 기록에 없는 ID는 멈춤 | `restore_b_deleted_note` | B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 4 | 10 | B 메모 **변조** → 미리보기(바뀔 항목 제목·내용) → 확인 뒤 복원 → 다시 읽어 대조, B의 다른 메모 그대로 | `restore_b_tampered_note` | B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 5 | 3·5 | 금지: 비로그인·위조 토큰 메모 목록, 브라우저 키로 원본 직접 조회, 첫 화면의 키 노출 | `anonymous_api_read`, `forged_token_read`, `anon_original_api_read`, `browser_key_exposure` | 항상 실행(실제 배포) |
@@ -300,13 +323,18 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 
 로컬에서 바로 다시 확인하는 명령: `npm run policy:diff`, `npm run decider:test`, `npm run fixture:7`, `npm run detect:test`.
 
+### 학생이 SQL Editor에서 실행한 결과 (안전 정책 = RLS)
+
+- `supabase/10-policy-backup.sql`(사본 남기기·검증·차이): 미실행
+- `supabase/10-policy-restore-test.sql`(침공 흉내 → 미리보기 → 복원 → 사용자별 확인 → 감사 표 기록): 미실행
+
 ## 10단계 저장점
 
 - `step` 10. 기존 `allowedRoutes`에 `POST /api/restore/notes/:id`를 더하고, `restoreRoute`를 같은 값으로 넣었습니다. `identityProvider`, `originalApiUrl`은 그대로입니다.
 - 판정기 `RULE_IDS`는 9단계 그대로 실제 구현한 7개입니다. 운영 판정기는 9단계 제출 때와 같고, 안전 정책 사본 `zone-v8`과 같습니다.
 - `src/attack-check.mjs`의 10단계 점검은 위 표의 1~4번과 13번이며, 6·10번은 A·B 비밀값이 있으면 실제 요청 결과로 바뀝니다. 제출 점검 20개 한도 때문에 8단계 판정기 구역 가상 요청 여섯 건은 결과를 그대로 둔 채 한 줄(`zone_decider_rules`)로 합쳤습니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법:
-  1. SQL Editor에서 `supabase/10-backup.sql` ①~③ 실행 → ④로 검증 기록 값을 뽑아 `backup/notes-manifest.json`에 넣고 커밋
+  1. SQL Editor에서 `supabase/10-backup.sql` ①~③ 실행 → ④로 검증 기록 값을 뽑아 `backup/notes-manifest.json`에 넣고 커밋 → `supabase/10-policy-backup.sql` 실행 → `supabase/10-policy-restore-test.sql` 실행(감사 표에 `pass`)
   2. (선택) GitHub Codespaces 비밀값 `ALEPH_B_EMAIL`·`ALEPH_B_PASSWORD`, `ALEPH_A_EMAIL`·`ALEPH_A_PASSWORD`를 등록한 뒤 Codespace를 멈췄다가 다시 시작
   3. `npm ci` → `npm run policy:diff` → `bundle-notes.json` 작성 → `npm run bundle`
 
@@ -322,3 +350,4 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
   - 복구 뒤 재시험에 1·2단계(공개 `/data.json`)를 더하고 결과마다 단계 번호를 붙였습니다.
   - 「실제 운영 정책은 건드리지 않습니다」: 중간에 운영 판정기 `src/decider.mjs`에 복원 경로 규칙을 넣었다가(커밋 `ddb7e78`), 9단계 제출 때와 같은 내용으로 되돌렸습니다. 안전 정책 사본도 그 판정기를 검증한 `zone-v8`로 바로잡았습니다.
 - 실제로 실행한 복원 시험 결과는 `backup/restore-test-log.md`에 적었습니다.
+- 안전 정책을 판정기 코드로만 다루고 있었습니다. 과제의 안전 정책은 DB의 RLS 정책(4단계)이라, SQL로 사본·검증·차이·복원·복원 시험을 만들었습니다(`supabase/10-policy-backup.sql`, `supabase/10-policy-restore-test.sql`).
