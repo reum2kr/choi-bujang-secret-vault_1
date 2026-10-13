@@ -5,10 +5,15 @@
 // 6단계 device_registered: 등록된 기기의 내 자료실 읽기만 허용합니다.
 // 7단계 step_up_required: 평소와 다른 시각 + 처음 보는 네트워크 + 갑작스러운 대량 읽기가 겹치면 다시 로그인을 요구합니다.
 // 8단계 zone_*: 자원을 메모(notes)·공지(notices) 구역으로 나누고, 엔진이 확인한 사용자·기기·메서드·정확한 경로로만 판단합니다.
+// 10단계 restore_verified_policy: 자기 메모 한 건 복구 경로는 엔진이 알려 준 정책 버전(request.policyRevision)이
+//   침해 전에 검증한 안전 정책 버전일 때만 통과시킵니다. 버전이 바뀌었거나 없으면 복원하지 않고 멈춥니다(deny).
 export const RULE_IDS = Object.freeze([
   'starter.deny', 'device_registered', 'step_up_required',
-  'zone_route_allowlist', 'zone_notes_self', 'zone_notes_no_bulk', 'zone_notices_instructor',
+  'zone_route_allowlist', 'zone_notes_self', 'zone_notes_no_bulk', 'zone_notices_instructor', 'restore_verified_policy',
 ]);
+
+// 침해 전에 검증한 안전 정책 버전(policy/safe/manifest.json의 policyRevision과 같음). 이 버전일 때만 복구를 허용합니다.
+const VERIFIED_POLICY_REVISIONS = Object.freeze(new Set([1]));
 
 // ── 8단계 제작 2: 구역별 허용 경로표 ─────────────────────────────────────────────
 // 정확히 이 메서드+경로 모양만 압니다(/api 접두사는 있어도 되고 없어도 됨). 나머지는 모두 거부합니다.
@@ -18,8 +23,11 @@ const ZONE_ROUTES = Object.freeze({
   'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_no_bulk',      access: 'deny_bulk' },
   'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
   'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
+  // 10단계: 제출한 복구 경로(POST /api/restore/notes/:id)와 같은 뜻의 경로 모양. 메모 한 건만, 검증된 정책 버전일 때만.
+  'POST /restore/notes/:id': { zone: 'notes', ruleId: 'zone_notes_self', access: 'restore', services: ['notes', 'restore'] },
+  'POST /notes/:id/restore': { zone: 'notes', ruleId: 'zone_notes_self', access: 'restore', services: ['notes', 'restore'] },
   // 강사 공지 구역: 강사만 들어갈 수 있는 구역입니다(학생의 자기 메모 구역과 다름).
-  // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
+  // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할 항목이 없어서 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   // 강사 여부는 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
   'GET /notices':      { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
   'GET /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
@@ -42,7 +50,8 @@ export function matchZone(request) {
   const entry = ZONE_ROUTES[`${method} ${shape}`];
   if (!entry) return null;
   // 엔진이 확인한 서비스가 다른 구역을 가리키면 거부합니다(예: service 'notices'로 메모 경로 요청).
-  if (!SERVICE_OK[entry.zone](request.service)) return null;
+  const serviceOk = entry.services ? entry.services.includes(request.service) : SERVICE_OK[entry.zone](request.service);
+  if (!serviceOk) return null;
   const path = request.path.replace(/^\/api(?=\/)/u, '');
   const parts = path.split('/');
   const shapeParts = shape.split('/');
@@ -141,6 +150,11 @@ export async function decide(request) {
     return answer(request, 'deny', 'route_not_allowed', zone.ruleId);
   }
 
+  // restore_verified_policy: 복구는 검증한 안전 정책 버전일 때만. 아니면 복원하지 않고 멈춥니다.
+  if (zone.access === 'restore' && !VERIFIED_POLICY_REVISIONS.has(request.policyRevision)) {
+    return answer(request, 'deny', 'policy_unverified', 'restore_verified_policy');
+  }
+
   // step_up_required: 복합 이상 사건이면, 엔진이 확인한 새 로그인이 있을 때까지 자료를 주지 않습니다.
   // 영구 차단(deny)이 아니라 다시 로그인(step_up)이며, 사유는 reasonCode·ruleIds로 남깁니다.
   const ctx = readContext(request);
@@ -148,6 +162,8 @@ export async function decide(request) {
     return answer(request, 'step_up', 'step_up_required', 'step_up_required');
   }
   // 메모 한 건의 주인 비교는 자료 API가 검증된 사용자와 저장된 owner_id로 합니다(남의 메모는 404). 판정기는 주인을 비교하지 않습니다.
-  return { ...answer(request, 'allow', 'approved', 'device_registered'), ruleIds: ['device_registered', zone.ruleId] };
+  const ruleIds = zone.access === 'restore'
+    ? ['device_registered', zone.ruleId, 'restore_verified_policy'] : ['device_registered', zone.ruleId];
+  return { ...answer(request, 'allow', 'approved', 'device_registered'), ruleIds };
 }
 
