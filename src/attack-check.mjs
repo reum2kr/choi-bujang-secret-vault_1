@@ -115,6 +115,7 @@ async function zoneChecks(app) {
   const said = (o) => `${o.decision} · ${o.reasonCode} · ${o.ruleIds.join(',')}`;
   const own = await ask({});
   const noticeWrite = await ask({ method: 'PUT', route: 'PUT /notices/:id', path: '/notices/demo' });
+  const noticeRead = await ask({ route: 'GET /notices/:id', path: '/notices/demo' });
   const exportPath = await ask({ path: '/notes/export' });
   const unknown = await ask({ route: 'GET /admin', path: '/admin' });
   const notices = await anonymousGet(app, '/api/notices');
@@ -125,6 +126,9 @@ async function zoneChecks(app) {
     { attackId: 'zone_student_notice_write',
       expected: '일반 학생의 강사 공지 수정(PUT /notices/:id)은 deny · instructor_required',
       observed: `판정기 응답 ${said(noticeWrite)}` },
+    { attackId: 'zone_student_notice_read',
+      expected: '일반 학생의 강사 공지 구역 읽기(GET /notices/:id)도 deny · instructor_required',
+      observed: `판정기 응답 ${said(noticeRead)}` },
     { attackId: 'zone_function_path',
       expected: ':id 자리에 export 같은 기능 경로를 넣은 요청은 deny · route_not_allowed',
       observed: `판정기 응답 ${said(exportPath)}` },
@@ -135,7 +139,7 @@ async function zoneChecks(app) {
       expected: '로그인 없는 /api/notices 요청은 401·403 JSON 오류로 거부',
       observed: `비로그인 /api/notices 요청 결과 HTTP ${notices.status}${notices.error ? ` ${notices.error}` : ''}${notices.notes === null ? ', 자료 없음' : `, ${notices.notes}건`}` },
     { attackId: 'zone_api_cross_owner',
-      expected: '메뉴를 우회한 직접 API 요청: B의 A 메모 GET·PUT은 404, 학생의 공지 PUT은 403 INSTRUCTOR_REQUIRED',
+      expected: '메뉴를 우회한 직접 API 요청: B의 A 메모 GET·PUT은 404, 학생의 공지 GET·PUT은 403 INSTRUCTOR_REQUIRED',
       observed: '미실행: 로그인 토큰이 필요해 이 스크립트로는 보내지 않음. 자료 API 소유자·강사 대조는 가짜 DB 로컬 시험으로 확인' },
   ];
 }

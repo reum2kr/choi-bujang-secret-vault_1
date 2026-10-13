@@ -178,12 +178,11 @@
 - 제작 1 (자원 ID, `lib/zones.mjs`): 메모 구역은 목록 `notes`·한 건 `note:<id>`, 강사 공지 구역은 목록 `notices`·한 건 `notice:<id>`로 구별합니다. 자료 API는 응답 머리글 `X-Resource-Id`에 이 값을 붙이고, 본문 모양 `{id,title,body}`와 기존 메모 주소(`/api/notes`, `/api/notes/:id`)는 그대로입니다. 공지는 새 표 `notices`와 새 주소 `/api/notices`, `/api/notices/:id`에 있습니다(`supabase/08-notices.sql`). 화면 메뉴는 바꾸지 않았습니다.
 - 제작 2 (판정기 구역 규칙, `src/decider.mjs`): 엔진이 확인한 사용자(`subjectId`)·기기(`deviceRegistered`)·메서드·정확한 경로(`route`와 `path`가 서로 맞아야 함)만 봅니다.
   - `zone_notes_self`: `GET /notes`, `GET /notes/:id`, `PUT /notes/:id` 허용(자기 메모 구역). 판정기는 소유자 정보를 받지 못하므로 남의 메모 여부는 자료 API가 다시 확인합니다.
-  - `zone_notices_read`: `GET /notices`, `GET /notices/:id` 허용.
-  - `zone_notices_instructor`: `PUT /notices/:id`는 `deny · instructor_required`. 판정 요청 계약에 엔진이 확인한 강사 역할이 없어(`request.role` 없음) 판정기는 일반 학생으로 보고 거부합니다.
+  - `zone_notices_instructor`: 강사 공지 구역(`GET /notices`, `GET /notices/:id`, `PUT /notices/:id`)은 강사만의 구역이라 `deny · instructor_required`. 판정 요청 계약에 엔진이 확인한 강사 역할이 없어(`request.role` 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   - `zone_route_allowlist`: 경로표에 없는 경로, route·path·메서드가 어긋난 요청, 쿼리가 붙은 요청, `:id` 자리에 `export`·`admin` 같은 기능 이름이나 더 깊은 경로가 오면 `deny · route_not_allowed`. `/api` 접두사는 있어도 됩니다.
   - 이전 규칙(`device_registered`, `step_up_required`, 로그인 주체 없음 → `starter.deny`)은 그대로이며 구역 규칙보다 먼저 또는 함께 적용됩니다.
-- 제작 3 (자료 API 재대조): 메모 API는 검증된 사용자와 저장된 `owner_id`를 다시 대조해 남의 메모는 404, 공지 수정 API는 DB `instructors` 표에 저장된 사용자만 허용하고 일반 학생은 `403 INSTRUCTOR_REQUIRED`입니다. 화면 메뉴나 요청 본문의 `role`·`isInstructor`는 믿지 않습니다. 거부하면 `zone_deny zone=… method=… reason=…` 한 줄만 서버 로그에 남기고, 사용자 ID·토큰·본문은 남기지 않습니다.
-- 가짜 DB 로컬 시험: A 자기 메모 읽기·수정 200, B의 A 메모 읽기·수정 404, 학생의 공지 수정 403(본문에 `role: instructor`를 넣어도 403), 강사 계정의 공지 수정 200, 공지 ID로 메모 API·메모 ID로 공지 API를 불러도 404.
+- 제작 3 (자료 API 재대조): 메모 API는 검증된 사용자와 저장된 `owner_id`를 다시 대조해 남의 메모는 404, 공지 API(목록·한 건 읽기·수정)는 DB `instructors` 표에 저장된 사용자만 허용하고 일반 학생은 `403 INSTRUCTOR_REQUIRED`입니다. 화면 메뉴나 요청 본문의 `role`·`isInstructor`는 믿지 않습니다. 거부하면 `zone_deny zone=… method=… reason=…` 한 줄만 서버 로그에 남기고, 사용자 ID·토큰·본문은 남기지 않습니다.
+- 가짜 DB 로컬 시험: A 자기 메모 읽기·수정 200, B의 A 메모 읽기·수정·삭제 404, 학생의 공지 목록·읽기·수정 403(본문에 `role: instructor`를 넣어도 403), 강사 계정의 공지 읽기·수정 200, 공지 ID로 메모 API를 불러도 404.
 
 ### 8단계 보강 (심판 S08_OTHER_ZONE_ALLOWED 뒤)
 
@@ -191,6 +190,7 @@
 - 한 건 주소(`/api/notes/:id`, `/api/notices/:id`)의 자료 ID는 쿼리가 아니라 실제 경로의 마지막 칸에서만 읽고, 쿼리가 붙으면 `400 QUERY_NOT_ALLOWED`로 거부합니다(`/api/notes/<A 메모>?id=<다른 값>` 바꿔치기 차단).
 - 자료의 주인 열쇠(`ownerKey`): 학생 로그인은 Supabase 사용자 번호 그대로, 심판 시험 계정은 검증된 `sub`에 시험 신원(a/b)까지 묶어 A와 B가 같은 주인으로 보이지 않게 했습니다.
 - 판정기는 엔진이 확인한 `service`도 봅니다. 메모 경로는 `notes` 서비스만, 공지 경로는 `notes`·`notices`만 받고 다른 구역 서비스면 `route_not_allowed`로 거부합니다.
+- 두 번째 재제출에서도 같은 코드가 나와, 카드에 없던 "학생의 공지 읽기 허용"을 뺐습니다. 카드의 구역 규칙은 자기 메모 읽기·수정과 강사 공지 수정뿐이므로, 강사 공지 구역은 읽기도 강사만 들어갈 수 있게 판정기(`instructor_required`)와 API(403) 모두 막았습니다. `RULE_IDS`에서 `zone_notices_read`를 지웠습니다.
 
 ### 아직 남은 한계
 
@@ -199,6 +199,6 @@
 
 ## 8단계 저장점
 
-- `step` 8. `allowedRoutes`에 `GET /api/notices`, `GET /api/notices/:id`, `PUT /api/notices/:id`를 더했습니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`, `zone_route_allowlist`, `zone_notes_self`, `zone_notices_read`, `zone_notices_instructor`입니다.
+- `step` 8. `allowedRoutes`에 `GET /api/notices`, `GET /api/notices/:id`, `PUT /api/notices/:id`를 더했습니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`, `zone_route_allowlist`, `zone_notes_self`, `zone_notices_instructor`입니다.
 - `src/attack-check.mjs`의 8단계 점검: 7단계 점검에 판정기 구역 규칙 가상 요청 네 건과 실제 배포의 비로그인 `/api/notices` 요청을 더하고, 토큰이 필요한 직접 API 교차 요청은 미실행으로 남깁니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: SQL Editor에서 `supabase/08-notices.sql` 실행(강사 지정은 선택) → `npm ci` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.

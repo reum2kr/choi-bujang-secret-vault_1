@@ -7,7 +7,7 @@
 // 8단계 zone_*: 자원을 메모(notes)·공지(notices) 구역으로 나누고, 엔진이 확인한 사용자·기기·메서드·정확한 경로로만 판단합니다.
 export const RULE_IDS = Object.freeze([
   'starter.deny', 'device_registered', 'step_up_required',
-  'zone_route_allowlist', 'zone_notes_self', 'zone_notices_read', 'zone_notices_instructor',
+  'zone_route_allowlist', 'zone_notes_self', 'zone_notices_instructor',
 ]);
 
 // ── 8단계 제작 2: 구역별 허용 경로표 ─────────────────────────────────────────────
@@ -17,10 +17,11 @@ const ZONE_ROUTES = Object.freeze({
   'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
   'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
   'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
-  'GET /notices':      { zone: 'notices', ruleId: 'zone_notices_read',       access: 'allow' },
-  'GET /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_read',       access: 'allow' },
-  // 강사 공지 수정: 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 일반 학생으로 보고 거부합니다.
-  // 강사 수정은 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
+  // 강사 공지 구역: 강사만 들어갈 수 있는 구역입니다(학생의 자기 메모 구역과 다름).
+  // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
+  // 강사 여부는 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
+  'GET /notices':      { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
+  'GET /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
   'PUT /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
 });
 // 구역별로 받아들이는 엔진 서비스 이름. 메모 경로는 notes 서비스만, 공지 경로는 notes(같은 자료실)·notices만.
@@ -129,7 +130,7 @@ export async function decide(request) {
     return answer(request, 'deny', 'route_not_allowed', 'zone_route_allowlist');
   }
 
-  // zone_notices_instructor: 엔진이 확인한 강사 역할이 계약에 없으므로 공지 수정은 거부합니다.
+  // zone_notices_instructor: 엔진이 확인한 강사 역할이 계약에 없으므로 강사 공지 구역(읽기·수정)은 거부합니다.
   if (zone.access === 'instructor_required') {
     return answer(request, 'deny', 'instructor_required', zone.ruleId);
   }
