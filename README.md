@@ -231,21 +231,21 @@
 
 ### 제작 1: 정책 차이 보기 (`npm run policy:diff`)
 
-- 침해 전에 검증한 안전 정책 사본은 `policy/safe/decider.zone-v8.mjs`이고, 검증 기록은 `policy/safe/manifest.json`에 있습니다(버전 `zone-v8`). 사본은 8·9단계 심판 통과 때의 판정기 `src/decider.mjs`(커밋 `71d22b8`)와 같습니다.
+- 침해 전에 검증한 안전 정책 사본은 `policy/safe/decider.zone-v10.mjs`이고, 검증 기록은 `policy/safe/manifest.json`에 있습니다(버전 `zone-v10`). 사본은 8·9단계 심판을 통과한 규칙에 10단계 복원 경로 규칙을 더한 판정기 `src/decider.mjs`(커밋 `ddb7e78`)와 같습니다.
 - `scripts/policy-restore.mjs`는 사본을 디스크에서 다시 읽어 세 가지로 검증합니다.
   1. SHA-256 지문을 기록과 대조
   2. 기록된 커밋의 `src/decider.mjs`와 바이트 대조
-  3. 정상·금지 가상 요청 15건(`policy/probes.mjs`)에 기대한 답을 하는지
+  3. 정상·금지 가상 요청 18건(`policy/probes.mjs`)에 기대한 답을 하는지
 - 사본이나 기록이 없거나 하나라도 실패하면 중단합니다. 통과하면 실행 전에 복원할 버전과 변경 범위(바뀌는 규칙, 응답이 달라지는 요청, 줄 차이)를 보여 줍니다.
 - 운영 반 엔진의 정책 등록부는 읽지도 쓰지도 않습니다.
 
-### 제작 2: 안전 정책으로 되돌리기 (`npm run policy:restore -- --confirm zone-v8`)
+### 제작 2: 안전 정책으로 되돌리기 (`npm run policy:restore -- --confirm zone-v10`)
 
 - `--confirm <버전>` 없이 실행하면 미리보기만 하고 파일을 바꾸지 않습니다.
 - 확인을 붙이면 `src/decider.mjs` 한 파일만 사본으로 바꾸고, 지문과 안전 요청을 다시 검사합니다.
 - `src/detect.mjs`, `xdr/` 규칙 같은 다른 서비스 규칙은 대상으로 받지 않습니다.
 - 결과는 `policy/audit.jsonl` 끝에 한 줄씩 덧붙이기만 합니다.
-- 되돌린 뒤에도 메모 전체 목록(B가 A 메모까지 여는 경로)은 `deny`, 자기 메모 한 건은 `allow`입니다.
+- 되돌린 뒤에도 메모 전체 목록(B가 A 메모까지 여는 경로)은 `deny`, 자기 메모 한 건과 그 복원은 `allow`입니다.
 
 ### 제작 3: 메모 한 건 복원 (`POST /api/restore/notes/:id`, 서비스 `notes`)
 
@@ -266,7 +266,7 @@
   - 지운 메모·변조된 메모 복원 → ID·소유자·내용 해시가 기록과 같음. 다시 복원하면 `already_same`. A 메모는 그대로.
   - 멈춤: B의 A 메모 복원 404, 사본 표의 내용과 해시를 함께 바꿈 409, 사본 소유자를 바꿈 409, 기록 밖 사본 404, 사본 행 없음 404, 같은 ID가 다른 주인에게 있음 409.
   - 거부: 비로그인·위조 토큰 401, 본문 `owner_id`·쿼리 바꿔치기 400.
-- 판정기(`src/decider.mjs`)는 바꾸지 않았습니다. 판정기를 거치는 경로에서는 복원 경로가 경로표 밖이라 `route_not_allowed`입니다.
+- 판정기(`src/decider.mjs`) `zone_notes_restore`: 엔진을 거치는 복원 요청 `POST /restore/notes/:id`(서비스 `notes` 또는 `restore`)를 자기 메모 구역과 같은 조건(로그인 주체, 등록 기기, 이상 사건이면 `step_up`)으로 허용합니다. 쿼리, 기능 이름(`export`), 더 깊은 경로, 공지·전체 복원, 다른 메서드는 `route_not_allowed`입니다. 메모 삭제(`DELETE`)·전체 목록은 그대로 거부합니다.
 
 ### 제작 4: 복구 뒤 재시험
 
@@ -284,7 +284,7 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 | 6 | 4 | 금지: B의 A 메모 읽기·수정·삭제·복원(404), A 메모는 그대로 | `cross_user_note_read` | A·B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 7 | 6·7 | 정상: 등록 기기 allow, 재로그인 뒤 allow / 금지: 미등록 기기 deny, 복합 이상 step_up | `registered_device_read`, `unregistered_device_read`, `anomalous_context_read` | 항상 실행(판정기 가상 요청) |
 | 8 | 7 | 엔진의 실제 재로그인 흐름 | `real_step_up_block` | 미실행 |
-| 9 | 8 | 정상: 자기 메모 한 건 / 금지: 전체 목록, 공지, 기능 경로, 경로표 밖, 비로그인 공지 | `zone_decider_rules`, `anonymous_notice_read` | 항상 실행 |
+| 9 | 8·10 | 정상: 자기 메모 한 건, 자기 메모 복원 / 금지: 전체 목록, 공지, 기능 경로, 경로표 밖, 비로그인 공지 | `zone_decider_rules`, `anonymous_notice_read` | 항상 실행 |
 | 10 | 8 | 금지: 메뉴를 우회한 직접 API 요청(B의 A 메모, 학생의 공지 목록·수정) | `zone_api_cross_owner` | A·B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 11 | 9 | 정상 기기 유지 / 도플갱어 기기 회수 제안 | `detect_normal_device`, `detect_doppelganger_burst` | 항상 실행(가상 사건) |
 | 12 | 9 | 엔진의 실제 회수 집행 | `live_revocation` | 미실행 |
@@ -295,7 +295,7 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 ## 10단계 저장점
 
 - `step` 10. 기존 `allowedRoutes`에 `POST /api/restore/notes/:id`를 더하고, `restoreRoute`를 같은 값으로 넣었습니다. `identityProvider`, `originalApiUrl`은 그대로입니다.
-- 판정기 `RULE_IDS`는 9단계 그대로 7개입니다. 판정기를 바꾸지 않았고, 안전 정책 사본과 같습니다.
+- 판정기 `RULE_IDS`는 실제 구현한 8개입니다: 9단계의 7개 + `zone_notes_restore`. 판정기는 안전 정책 사본 `zone-v10`과 같습니다.
 - `src/attack-check.mjs`의 10단계 점검은 위 표의 1~4번과 13번이며, 6·10번은 A·B 비밀값이 있으면 실제 요청 결과로 바뀝니다. 제출 점검 20개 한도 때문에 8단계 판정기 구역 가상 요청 여섯 건은 결과를 그대로 둔 채 한 줄(`zone_decider_rules`)로 합쳤습니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법:
   1. SQL Editor에서 `supabase/10-backup.sql` ①~③ 실행 → ④로 검증 기록 값을 뽑아 `backup/notes-manifest.json`에 넣고 커밋
@@ -307,4 +307,5 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 - 심판 판정 시각의 Vercel 로그에는 심판의 요청이 없었습니다(묶음을 만들 때 점검 스크립트가 보낸 요청만 있음).
 - 첫 제출(`11f09c4`)에서는 「백업 검증」만 맞지 않았습니다. 그 뒤 두 번(`fa744da`, `c242051`)은 묶음 밖 결과를 문서에 적거나 가상 사본 결과를 넣어 「한 건 복원 일치」·「복원 뒤 재시험」까지 맞지 않았습니다. 그 내용을 빼고 위 표로 정리했습니다.
 - 원인으로 찾은 빈틈: 메모 사본을 사본 표에 함께 저장된 해시와만 비교하고 있었습니다. 이제는 침해 전에 검증해 커밋한 기록(`backup/notes-manifest.json`)과 대조합니다.
+- 「이번 단계에 들어오는 괴물」 결과는 첫 제출부터 같았습니다(변조 뒤 복구: 통함, 삭제 뒤 복구·1~9단계 재전송: 격파). 시작 틀 원본의 안내대로 심판은 격리 환경에서 학생 판정기를 직접 실행하는데, 판정기는 그동안 바뀌지 않았고 복원 경로를 경로표 밖으로 거부하고 있었습니다. 그래서 메모 수정(변조)은 허용되는데 복원은 막혀 변조가 남았습니다(삭제는 판정기가 거부해 격파). 판정기에 `zone_notes_restore`를 더하고 안전 정책 사본을 `zone-v10`으로 갱신했습니다.
 - `377b3b8` 판정의 공격 목록에서 「B 메모 변조 뒤 복구 경로 호출」이 통했다고 나왔습니다. 묶음에 변조 뒤 복원 점검이 없었고, 1~9단계 점검이 복원보다 먼저 실행됐으며, A의 정상 요청과 B의 A 자료 요청이 미실행이었습니다. 변조 → 복원 점검을 더하고, 복원 점검을 먼저 실행한 뒤 1~9단계를 다시 보내도록 순서를 바꾸고, A 비밀값이 있으면 A 쪽 요청도 보내게 했습니다.
