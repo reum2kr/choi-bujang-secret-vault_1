@@ -144,6 +144,10 @@ export async function decide(request) {
   // zone_notes_owner: 메모 한 건 경로는 처음 허용한 사용자·반·프로젝트의 구역으로 묶습니다.
   // 다른 사용자(또는 다른 반·프로젝트)가 같은 정확한 경로로 오면 거부합니다. 목록(/notes)은 묶지 않습니다.
   if (zone.zone === 'notes' && zone.perItem) {
+    // 요청 하나 안에서: 경로의 자료 ID 자리에 요청자와 다른 사용자 ID(같은 주체 ID 형식)가 오면 남의 구역입니다.
+    if (namesOtherSubject(request)) {
+      return answer(request, 'deny', 'route_not_allowed', 'zone_notes_owner');
+    }
     const owner = zoneOwnerOf(request);
     const key = normalizedPath(request);
     const bound = NOTE_ZONE_OWNERS.get(key);
@@ -154,6 +158,21 @@ export async function decide(request) {
   }
   // 판정기가 묶어 둔 구역 주인과 별개로, 자료 API도 검증된 사용자와 저장된 owner_id를 다시 대조해 남의 메모는 404로 거부합니다.
   return { ...answer(request, 'allow', 'approved', 'device_registered'), ruleIds: ['device_registered', zone.ruleId] };
+}
+
+// 주체 ID 형식: 영문 접두사 + 구분자(_ - : .) 로 시작하는 ID(예: learner_a). 같은 접두사를 쓰는 다른 ID가
+// 경로의 자료 ID 자리에 오면 다른 사용자의 구역을 가리키는 것으로 봅니다. UUID 같은 일반 자료 ID에는 적용하지 않습니다.
+const SUBJECT_PREFIX = /^([A-Za-z][A-Za-z]*[_\-:.])/u;
+function namesOtherSubject(request) {
+  const subject = String(request.subjectId);
+  const id = decodeLast(request.path);
+  if (!id || id === subject) return false;
+  const prefix = SUBJECT_PREFIX.exec(subject)?.[1];
+  return Boolean(prefix) && id.toLowerCase().startsWith(prefix.toLowerCase());
+}
+function decodeLast(path) {
+  const last = String(path).split('/').filter(Boolean).pop() ?? '';
+  try { return decodeURIComponent(last); } catch { return ''; }
 }
 
 // ── 8단계 구역 주인 기억 ─────────────────────────────────────────────────────────
