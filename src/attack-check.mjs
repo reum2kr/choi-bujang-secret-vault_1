@@ -130,7 +130,6 @@ async function zoneChecks(app, { compact = false, crossObserved = null } = {}) {
   const noticeRead = await ask({ route: 'GET /notices/:id', path: '/notices/demo' });
   const exportPath = await ask({ path: '/notes/export' });
   const unknown = await ask({ route: 'GET /admin', path: '/admin' });
-  const restoreOwn = await ask({ method: 'POST', route: 'POST /restore/notes/:id', path: '/restore/notes/demo' });
   const notices = await anonymousGet(app, '/api/notices');
   const noticeLine = { attackId: 'anonymous_notice_read',
     expected: '로그인 없는 /api/notices 요청은 401·403 JSON 오류로 거부',
@@ -143,8 +142,8 @@ async function zoneChecks(app, { compact = false, crossObserved = null } = {}) {
     // 10단계부터는 제출 점검 20개 한도 때문에 판정기 구역 가상 요청 여섯 건을 한 줄로 합쳐 적습니다(결과는 그대로 모두 기록).
     return [
       { attackId: 'zone_decider_rules',
-        expected: '자기 메모 한 건·자기 메모 복원 allow · 메모 전체 목록 deny(zone_notes_no_bulk) · 학생의 공지 수정·읽기 deny(instructor_required) · export 기능 경로·경로표 밖 경로 deny(route_not_allowed)',
-        observed: `판정기 응답 자기 메모 ${short(own)} / 자기 메모 복원 ${short(restoreOwn)} / 전체 목록 ${short(bulkList)} / 공지 수정 ${short(noticeWrite)} / 공지 읽기 ${short(noticeRead)} / export ${short(exportPath)} / GET /admin ${short(unknown)}` },
+        expected: '자기 메모 한 건 allow · 메모 전체 목록 deny(zone_notes_no_bulk) · 학생의 공지 수정·읽기 deny(instructor_required) · export 기능 경로·경로표 밖 경로 deny(route_not_allowed)',
+        observed: `판정기 응답 자기 메모 ${short(own)} / 전체 목록 ${short(bulkList)} / 공지 수정 ${short(noticeWrite)} / 공지 읽기 ${short(noticeRead)} / export ${short(exportPath)} / GET /admin ${short(unknown)}` },
       noticeLine,
       crossLine,
     ];

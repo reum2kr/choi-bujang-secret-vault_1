@@ -1,7 +1,7 @@
 // 10단계 제작 1·2: 침해 전에 검증한 안전 정책 사본(policy/safe)과 현재 시험 정책(policy/test/decider.mjs)을 비교하고,
 // 확인을 받은 뒤에만 시험 정책을 사본 버전으로 되돌립니다.
 //   npm run policy:diff                              → 사본 검증 + 복원할 버전과 변경 범위 미리보기(파일을 바꾸지 않음)
-//   npm run policy:restore -- --confirm zone-v10     → 같은 미리보기 뒤 시험 정책 한 파일만 사본으로 되돌림
+//   npm run policy:restore -- --confirm zone-v8      → 같은 미리보기 뒤 시험 정책 한 파일만 사본으로 되돌림
 // 사본이 없거나 지문·Git 기록·안전 요청 묶음 검증 중 하나라도 실패하면 중단합니다.
 // 실제 운영 정책(src/decider.mjs)은 읽어서 지문만 보여 주고 절대 쓰지 않습니다. 대상으로 지정하면 거부합니다.
 // 운영 반 엔진의 정책 등록부, src/detect.mjs, xdr/ 규칙 같은 다른 서비스 규칙도 읽지도 쓰지도 않습니다.

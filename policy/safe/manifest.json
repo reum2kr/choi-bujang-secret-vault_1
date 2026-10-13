@@ -1,11 +1,11 @@
 {
   "schema": "aleph.policy.snapshot.v1",
-  "version": "zone-v10",
-  "description": "침해 전에 검증한 판정기 안전 정책 사본. 8·9단계 규칙에 10단계 자기 메모 복원 경로(zone_notes_restore)를 더한 src/decider.mjs와 같은 내용입니다.",
-  "snapshotPath": "policy/safe/decider.zone-v10.mjs",
+  "version": "zone-v8",
+  "description": "침해 전에 검증한 판정기 안전 정책 사본. 8단계·9단계 심판을 통과한 운영 판정기 src/decider.mjs(커밋 71d22b8, 9단계 3754498과 같음)와 같은 내용입니다.",
+  "snapshotPath": "policy/safe/decider.zone-v8.mjs",
   "targetPath": "policy/test/decider.mjs",
-  "sourceCommit": "ddb7e78b62fe9a747fd4ae19ee321f073a3c3592",
-  "sha256": "9a410d7607f61fd435222ac1bed958cefc93b40fd18bb22e6fa41c1ab44fed4e",
+  "sourceCommit": "71d22b8da42e2ffc2d48334c40784fd56e2e3534",
+  "sha256": "c889e2f61777152fd0ee8d7995ca231a76a7af3b312feb7255eee0c32146bb2c",
   "ruleIds": [
     "starter.deny",
     "device_registered",
@@ -13,8 +13,7 @@
     "zone_route_allowlist",
     "zone_notes_self",
     "zone_notes_no_bulk",
-    "zone_notices_instructor",
-    "zone_notes_restore"
+    "zone_notices_instructor"
   ],
   "operatingPolicy": "src/decider.mjs (읽기만, 복원 대상 아님)"
 }

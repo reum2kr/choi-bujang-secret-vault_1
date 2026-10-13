@@ -5,10 +5,9 @@
 // 6단계 device_registered: 등록된 기기의 내 자료실 읽기만 허용합니다.
 // 7단계 step_up_required: 평소와 다른 시각 + 처음 보는 네트워크 + 갑작스러운 대량 읽기가 겹치면 다시 로그인을 요구합니다.
 // 8단계 zone_*: 자원을 메모(notes)·공지(notices) 구역으로 나누고, 엔진이 확인한 사용자·기기·메서드·정확한 경로로만 판단합니다.
-// 10단계 zone_notes_restore: 자기 메모 한 건을 침해 전 사본에서 되살리는 복원 경로(POST /restore/notes/:id)를 같은 조건으로 허용합니다.
 export const RULE_IDS = Object.freeze([
   'starter.deny', 'device_registered', 'step_up_required',
-  'zone_route_allowlist', 'zone_notes_self', 'zone_notes_no_bulk', 'zone_notices_instructor', 'zone_notes_restore',
+  'zone_route_allowlist', 'zone_notes_self', 'zone_notes_no_bulk', 'zone_notices_instructor',
 ]);
 
 // ── 8단계 제작 2: 구역별 허용 경로표 ─────────────────────────────────────────────
@@ -19,8 +18,6 @@ const ZONE_ROUTES = Object.freeze({
   'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_no_bulk',      access: 'deny_bulk' },
   'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
   'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
-  // 10단계: 복원은 메모 한 건만, 본문 없이 ID로만 부릅니다. 사본 검증(ID·소유자·내용 해시가 침해 전 기록과 같은지)은 복원 API가 합니다.
-  'POST /restore/notes/:id': { zone: 'notes', ruleId: 'zone_notes_restore',   access: 'allow', services: ['notes', 'restore'] },
   // 강사 공지 구역: 강사만 들어갈 수 있는 구역입니다(학생의 자기 메모 구역과 다름).
   // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   // 강사 여부는 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
@@ -45,8 +42,7 @@ export function matchZone(request) {
   const entry = ZONE_ROUTES[`${method} ${shape}`];
   if (!entry) return null;
   // 엔진이 확인한 서비스가 다른 구역을 가리키면 거부합니다(예: service 'notices'로 메모 경로 요청).
-  const serviceOk = entry.services ? entry.services.includes(request.service) : SERVICE_OK[entry.zone](request.service);
-  if (!serviceOk) return null;
+  if (!SERVICE_OK[entry.zone](request.service)) return null;
   const path = request.path.replace(/^\/api(?=\/)/u, '');
   const parts = path.split('/');
   const shapeParts = shape.split('/');
