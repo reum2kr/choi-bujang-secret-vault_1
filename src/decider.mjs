@@ -27,7 +27,7 @@ const ZONE_ROUTES = Object.freeze({
   'POST /restore/notes/:id': { zone: 'notes', ruleId: 'zone_notes_self', access: 'restore', services: ['notes', 'restore'] },
   'POST /notes/:id/restore': { zone: 'notes', ruleId: 'zone_notes_self', access: 'restore', services: ['notes', 'restore'] },
   // 강사 공지 구역: 강사만 들어갈 수 있는 구역입니다(학생의 자기 메모 구역과 다름).
-  // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
+  // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할 항목이 없어서 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   // 강사 여부는 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
   'GET /notices':      { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
   'GET /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
