@@ -1,0 +1,21 @@
+{
+  "schema": "aleph.policy.snapshot.v1",
+  "version": "zone-v10r2",
+  "description": "침해 전에 검증한 판정기 안전 정책 사본. 9단계 운영 판정기 규칙에, 검증한 정책 버전(policyRevision 1)일 때만 자기 메모 한 건 복구를 허용하는 restore_verified_policy를 더한 src/decider.mjs(커밋 e46270d)와 같습니다.",
+  "snapshotPath": "policy/safe/decider.zone-v10r2.mjs",
+  "targetPath": "policy/test/decider.mjs",
+  "sourceCommit": "e46270dcd1ebb5ea8cddb70f38d3df6099a2fb88",
+  "sha256": "e9a8ddeb8cc0f650f1a9e5749478927e89d9f0887180be440b1a974505d07932",
+  "ruleIds": [
+    "starter.deny",
+    "device_registered",
+    "step_up_required",
+    "zone_route_allowlist",
+    "zone_notes_self",
+    "zone_notes_no_bulk",
+    "zone_notices_instructor",
+    "restore_verified_policy"
+  ],
+  "operatingPolicy": "src/decider.mjs (읽기만, 복원 대상 아님)",
+  "policyRevision": 1
+}

@@ -1,0 +1,23 @@
+{
+  "schema": "aleph.backup.manifest.v1",
+  "label": "pre-incident-10",
+  "description": "침해 전에 검증한 시험 계정 B의 가상 메모 사본 기록입니다. 제목·본문·이메일·사용자 번호는 넣지 않고 ID와 지문만 둡니다.",
+  "contentHash": "sha256(title + 줄바꿈 + body), 소문자 16진수",
+  "ownerHash": "sha256(owner_id 문자열), 소문자 16진수",
+  "verifiedAt": "2026-10-13",
+  "verifiedBy": "Supabase SQL Editor에서 notes_backup을 다시 읽어 내용 지문을 재계산(recomputed_ok true)",
+  "entries": [
+    {
+      "id": "199b2b1c-96a8-4a92-90b5-a9969bbc9759",
+      "owner_sha256": "1b0784406de5fedebbe8951cdc56914a024bc79f32c8bea05157d03a60965c63",
+      "content_sha256": "49e19690d2c201caf045482c496fc42f47bca4126fba022f8cb6201e3f9d6950",
+      "recomputed_ok": true
+    },
+    {
+      "id": "80976c71-b57f-48f4-b3fe-85cfabaae21a",
+      "owner_sha256": "1b0784406de5fedebbe8951cdc56914a024bc79f32c8bea05157d03a60965c63",
+      "content_sha256": "e39ce5818d1bce2bff55abbe161f7e14578836d68513e0f3ba0732679345872f",
+      "recomputed_ok": true
+    }
+  ]
+}
