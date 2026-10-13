@@ -233,12 +233,14 @@
 
 아래 결과는 모두 실제로 실행해서 얻은 값입니다. 하지 않은 시험은 미실행으로 적었습니다.
 - 제출 점검: 2026-10-13 21:00(KST), 커밋 `a9952ce` 배포를 대상으로 `npm run bundle` 실행
-- RLS 복원 시험: 같은 날 17:16~17:17, Supabase SQL Editor에서 실행
+- RLS 시험 정책 복원 시험(시험 표 `notes_drill` 대상): Supabase SQL Editor 결과는 아래 「학생이 SQL Editor에서 실행한 결과」에 적습니다. 적기 전까지는 미실행입니다.
 
 1. **백업 검증 (사본을 다시 읽어 검증, 실패하면 멈춤, 실행 전 버전·바뀔 항목 표시, 운영 정책 그대로)**
-   - 안전 정책(RLS) 사본 `s4-rls-v1`: `notes_policy_capture` → `captured`, 차이 보기 `changeCount 0`.
-   - 복원 시험: `notes_policy_restore(…, false)` 미리보기 `previewed (changeCount 2)` → `notes_policy_restore(…, true)` `restored (changeCount 2)` → `policy_restore_test · pass` → 차이 `changeCount 0`.
-   - 없는 사본·변조된 사본은 `stopped`로 멈추고 정책을 바꾸지 않습니다. 로컬 PostgreSQL 16에서 확인했습니다.
+   - 실제 운영 정책(운영 표 `notes`의 RLS)은 읽기만 합니다. 사본 `s4-rls-v1`은 운영 정책이 4단계 안전 기준과 같을 때 읽어 둔 것이고, 차이 보기·복원은 시험 정책(시험 표 `notes_drill`의 RLS)만 대상으로 합니다.
+   - 복원은 실행할 때마다 사본을 다시 읽어 SHA-256을 다시 계산·대조합니다. 사본이 없거나 대조가 다르면 `stopped`로 멈추고 아무 정책도 바꾸지 않습니다.
+   - 실행 전(`notes_policy_restore(…, false)`)에는 복원할 버전과 바뀔 항목만 보여 주고 바꾸지 않습니다.
+   - 실행 뒤 시험 정책을 다시 읽어 사본과 같은지, 운영 정책 지문이 실행 전과 같은지 확인합니다. 하나라도 다르면 전체 취소합니다.
+   - 로컬 PostgreSQL 16(Supabase 역할·`auth.uid()` 흉내) 실행 결과: 복원 시험 `pass`(침공 상태 B→A 시험 메모 1건, 복원 뒤 0건, A 자기 시험 메모 1건), 미리보기 바뀔 항목 2개, 없는 사본·변조 사본 `stopped`(정책 그대로), 운영 표 `notes` 정책 지문 실행 전후 같음, 브라우저 역할 함수 실행 거부.
    - 판정기 보조 사본: `zone-v10r2`를 다시 읽어 지문·Git(`e46270d`)·안전 요청 18건으로 검증 통과. 변조 사본 → 중단, 없는 사본 → 중단. 시험 정책·감사 기록·운영 정책(`src/decider.mjs`) 그대로.
    - 판정기 응답: 검증 정책 버전(1)의 복구 `allow`, 바뀐 버전(2)의 복구 `deny(policy_unverified)`.
 2. **한 건 복원 일치 (ID·소유자·내용 해시가 사본과 같을 때만 그 한 건, 다른 메모 그대로)**
@@ -268,12 +270,15 @@
 
 ### 제작 1: 안전 정책 사본과 차이 보기 (`supabase/10-policy-backup.sql`)
 
-- **안전 정책**은 4단계에서 만든 `public.notes` 표의 RLS 정책입니다. RLS가 켜져 있고, 정책 4개(`notes_select_own`·`notes_insert_own`·`notes_update_own`·`notes_delete_own`)가 모두 `authenticated` 역할에 `auth.uid() = owner_id` 조건을 겁니다. 실제 운영 정책은 Supabase에 걸려 있는 이 정책이고, 시험은 SQL Editor에서 이 정책을 대상으로 합니다.
+- 정책 세 가지를 나눕니다.
+  - **실제 운영 정책**: 운영 표 `public.notes`의 RLS(4단계 정책 4개 `notes_select_own`·`notes_insert_own`·`notes_update_own`·`notes_delete_own`, 모두 `authenticated` 역할에 `auth.uid() = owner_id`). 10단계 SQL은 이 정책을 **읽기만** 하고 바꾸지 않습니다.
+  - **안전 정책 사본**: 침해 전에 운영 정책이 위 기준과 같은지 검증한 뒤 읽어 둔 사본(`notes_policy_backup`, 버전 `s4-rls-v1`, SHA-256 함께).
+  - **시험 정책**: 운영 표와 따로 둔 시험 표 `public.notes_drill`의 RLS. 가상 시험 메모만 넣고 브라우저 역할 권한은 없습니다. 3차 침공 훈련은 이 시험 정책을 바꾸고 되돌립니다.
 - 사본 표 `notes_policy_backup`에는 버전, 정책 JSON, SHA-256을 두고, 감사 표 `notes_policy_audit`에는 덧붙이기만 합니다. 두 표 모두 트리거로 고치기·지우기를 막고, 브라우저 역할(`anon`·`authenticated`) 권한은 없습니다.
 - 함수(모두 브라우저 역할 실행 불가):
-  - `notes_policy_capture('s4-rls-v1')`: 지금 정책이 4단계 안전 기준(RLS 켜짐, 정책 4개, 모두 `auth.uid()`·`owner_id` 비교)과 같을 때만 침해 전 사본을 남깁니다. 다르면 멈춥니다.
+  - `notes_policy_capture('s4-rls-v1')`: 운영 정책이 4단계 안전 기준(RLS 켜짐, 정책 4개, 모두 `auth.uid()`·`owner_id` 비교)과 같을 때만 읽어서 침해 전 사본을 남깁니다. 다르면 멈춥니다. 운영 정책은 바꾸지 않습니다.
   - `notes_policy_backup_verify(버전)`: 사본을 다시 읽어 SHA-256을 다시 계산·대조합니다. 없거나 다르면 예외로 멈춥니다.
-  - `notes_policy_diff(버전)`: 검증된 사본과 지금 정책의 차이만 보여 줍니다(읽기 전용).
+  - `notes_policy_diff(버전)`: 검증된 사본과 시험 정책(`notes_drill`)의 차이만 보여 줍니다(읽기 전용). 결과에 버전, 사본 출처(`notes`), 대상(`notes_drill`), 바뀔 항목 수와 항목별 지금 값·사본 값이 나옵니다. 사본이 없거나 검증이 실패하면 예외로 멈춥니다.
 
 ### 보조: 판정기 코드 사본 (`npm run policy:diff`)
 
@@ -286,17 +291,21 @@
 - `select public.notes_policy_restore('s4-rls-v1', false);`: 복원할 버전과 바뀔 항목만 보여 주고 아무것도 바꾸지 않습니다(감사 기록에 `previewed`).
 - `select public.notes_policy_restore('s4-rls-v1', true);`:
   1. 사본을 다시 읽어 검증합니다. 사본이 없거나 검증이 실패하면 아무것도 바꾸지 않고 감사 기록(`stopped`)만 남기고 멈춥니다.
-  2. `notes` 표의 정책만 사본대로 되돌립니다. 다른 표의 정책과 사본·감사 기록은 건드리지 않습니다.
-  3. 다시 읽어 사본과 같은지 대조합니다. 다르면 예외로 이 복원 전체를 취소합니다.
+  2. 운영 정책 지문을 먼저 읽어 둡니다.
+  3. 시험 표 `notes_drill`의 정책만 사본대로 되돌립니다. 운영 표 `notes`, 다른 서비스 표(`notices`·`instructors`·`notes_backup` 등)의 정책, 사본·감사 기록은 건드리지 않습니다.
+  4. 시험 정책을 다시 읽어 사본과 같은지 대조하고, 운영 정책 지문이 그대로인지 확인합니다. 하나라도 다르면 예외로 이 복원 전체를 취소합니다.
+  5. 감사 표에 `restored`와 `operatingPolicyUnchanged: true`를 덧붙입니다.
 - 복원 시험(`supabase/10-policy-restore-test.sql`, 한 묶음으로 실행되고 실패하면 전부 취소):
-  1. 3차 침공 흉내: 누구나 모든 메모 읽기 정책 추가, 본인 수정 정책 삭제
-  2. 미리보기 → 실행
-  3. 사용자를 바꿔 확인: B로는 A 메모 0건(거부), A로는 자기 메모가 보임(유지)
-  4. 시험용 읽기 권한을 다시 회수(5단계 상태)하고, 결과를 감사 표에 `pass`/`fail`로 기록
-- 로컬 PostgreSQL 16(Supabase 역할·`auth.uid()` 흉내)에서 실행한 결과(제출 묶음 밖):
-  - 시험 `pass`: 침공 상태에서 B가 A 메모 2건을 봤고, 복원 뒤 0건, A는 자기 메모 2건.
-  - 미리보기는 정책을 바꾸지 않음. 없는 버전·변조된 사본은 `stopped`로 멈추고 정책 그대로.
-  - 사본·감사 표 고치기·지우기 거부, 브라우저 역할 함수 실행 거부.
+  1. 준비: 운영 표에서 A·B 소유자 ID만 읽어, 시험 표에 A·B의 가상 시험 메모를 넣고 시험 정책을 사본대로 맞춤
+  2. 3차 침공 흉내(시험 정책만): 누구나 모든 메모 읽기 정책 추가, 본인 수정 정책 삭제
+  3. 복원 전 확인: B로 A 시험 메모가 보임(침공 상태)
+  4. 미리보기 → 실행
+  5. 복원 뒤 확인: B로는 A 시험 메모 0건(거부), A로는 자기 시험 메모가 보임(유지)
+  6. 시험용 읽기 권한을 다시 회수하고, 운영 정책 지문이 처음과 같은지 확인한 뒤 결과를 감사 표에 `pass`/`fail`로 기록
+- 로컬 PostgreSQL 16(Supabase 역할·`auth.uid()` 흉내)에서 실행한 결과(제출 묶음 밖, 2026-10-13):
+  - 시험 `pass` 두 번(다시 실행해도 같음): 침공 상태에서 B가 A 시험 메모 1건을 봤고, 복원 뒤 0건, A는 자기 시험 메모 1건. 운영 표 `notes` 정책 지문은 실행 전후 같음.
+  - 미리보기는 정책을 바꾸지 않음. 없는 버전·변조된 사본은 `stopped`로 멈추고, 침공 정책이 그대로 남아 있음(아무것도 바꾸지 않음).
+  - 사본·감사 표 고치기·지우기 거부, 브라우저 역할(`anon`·`authenticated`) 함수 실행 거부.
 - 실제 Supabase에서 실행한 결과는 아래 「학생이 SQL Editor에서 실행한 결과」에 적었습니다.
 
 #### 보조 도구 되돌리기 (`npm run policy:restore -- --confirm zone-v10r2`)
@@ -336,7 +345,7 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 
 | 순서 | 단계 | 정상 요청 / 금지 요청 | 제출 묶음 점검 | 실행 여부 |
 |---|---|---|---|---|
-| 0 | 10 | RLS 안전 정책 복원 시험: 침공 흉내 → 미리보기 → 복원 → B로 A 메모 0건·A로 자기 메모 보임 → 감사 표 `pass` | SQL Editor `supabase/10-policy-restore-test.sql` | 학생이 실행함(2026-10-13 17:17 `pass`), 제출 묶음 밖 |
+| 0 | 10 | 시험 정책(`notes_drill` RLS) 복원 시험: 침공 흉내 → 미리보기 → 복원 → B로 A 시험 메모 0건·A로 자기 시험 메모 보임 → 운영 정책 그대로 → 감사 표 `pass` | SQL Editor `supabase/10-policy-restore-test.sql` | 학생이 SQL Editor에서 실행(결과는 아래), 제출 묶음 밖 |
 | 1 | 10 | 금지: 비로그인·위조 토큰 복원 요청 | `restore_anonymous` | 항상 실행(실제 배포) |
 | 2 | 10 | 판정기 코드 사본(보조) 다시 읽기 검증, 실행 전 복원 버전·변경 범위 표시, 변조·없는 사본은 중단 | `policy_snapshot_verified` | 항상 실행 |
 | 3 | 10 | B 메모 **삭제** → 미리보기 → 확인 없는 요청은 쓰기 없음 → 확인 뒤 복원 → 다시 읽어 침해 전 기록과 ID·소유자 지문·내용 해시 대조, 기록에 없는 ID는 멈춤 | `restore_b_deleted_note` | B 비밀값이 있을 때 실행, 없으면 미실행 |
@@ -353,11 +362,11 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 
 로컬에서 바로 다시 확인하는 명령: `npm run policy:diff`, `npm run decider:test`, `npm run fixture:7`, `npm run detect:test`.
 
-### 학생이 SQL Editor에서 실행한 결과 (안전 정책 = RLS)
+### 학생이 SQL Editor에서 실행한 결과 (시험 정책 = `notes_drill` RLS)
 
-- 2026-10-13 17:16(KST) `supabase/10-policy-backup.sql`: 감사 표 `policy_capture · captured`(버전 `s4-rls-v1`), 차이 보기 `changeCount: 0`.
-- 2026-10-13 17:17(KST) `supabase/10-policy-restore-test.sql`: 감사 표에 `policy_restore · previewed (changeCount 2)` → `policy_restore · restored (changeCount 2)` → `policy_restore_test · pass`. 이어서 차이 보기 `changeCount: 0`(지금 정책 = 사본).
-- `pass`는 시험 SQL에서 복원 상태가 `restored`이고, B로는 A 메모 0건, A로는 자기 메모 1건 이상일 때만 기록됩니다.
+- `supabase/10-policy-backup.sql`: 미실행(학생이 실행한 뒤 결과를 적습니다)
+- `supabase/10-policy-restore-test.sql`: 미실행(학생이 실행한 뒤 결과를 적습니다)
+- `pass`는 시험 SQL에서 복원 상태가 `restored`이고, 복원 전 B가 A 시험 메모를 봤고, 복원 뒤 B로는 0건, A로는 자기 시험 메모 1건 이상, 운영 정책 지문이 처음과 같을 때만 기록됩니다.
 
 ## 10단계 저장점
 
@@ -366,6 +375,6 @@ B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`AL
 - 실제로 실행한 복원 시험 결과는 `backup/restore-test-log.md`에 있습니다.
 - `src/attack-check.mjs`의 10단계 점검은 위 표의 1~4번과 13번이며, 6·10번은 A·B 비밀값이 있으면 실제 요청 결과로 바뀝니다. 제출 점검 20개 한도 때문에 8단계 판정기 구역 가상 요청 여섯 건은 결과를 그대로 둔 채 한 줄(`zone_decider_rules`)로 합쳤습니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법:
-  1. SQL Editor에서 `supabase/10-backup.sql` ①~③ 실행 → ④로 검증 기록 값을 뽑아 `backup/notes-manifest.json`에 넣고 커밋 → `supabase/10-policy-backup.sql` 실행 → `supabase/10-policy-restore-test.sql` 실행(감사 표에 `pass`)
+  1. SQL Editor에서 `supabase/10-backup.sql` ①~③ 실행 → ④로 검증 기록 값을 뽑아 `backup/notes-manifest.json`에 넣고 커밋 → `supabase/10-policy-backup.sql` 실행(사본 검증, 시험 정책과 차이 보기) → `supabase/10-policy-restore-test.sql` 실행(감사 표에 `pass`, 운영 정책 그대로)
   2. (선택) GitHub Codespaces 비밀값 `ALEPH_B_EMAIL`·`ALEPH_B_PASSWORD`, `ALEPH_A_EMAIL`·`ALEPH_A_PASSWORD`를 등록한 뒤 Codespace를 멈췄다가 다시 시작
   3. `npm ci` → `npm run policy:diff` → `bundle-notes.json` 작성 → `npm run bundle`

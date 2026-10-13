@@ -1,11 +1,14 @@
 # 복원 시험 기록
 
-## 안전 정책(notes 표 RLS) 복원 시험
+## 시험 정책(notes_drill 표 RLS) 복원 시험
+
+운영 정책(`notes` 표 RLS)은 읽기만 하고, 시험 정책(`notes_drill` 표 RLS)만 바꾸고 되돌립니다.
 
 | 시각(2026-10-13, KST) | 실행 | 결과(`notes_policy_audit`) |
 |---|---|---|
-| 17:16 | `supabase/10-policy-backup.sql` | `policy_capture · captured` (`s4-rls-v1`), 차이 `changeCount 0` |
-| 17:17 | `supabase/10-policy-restore-test.sql` | `previewed (changeCount 2)` → `restored (changeCount 2)` → `policy_restore_test · pass`, 이어서 차이 `changeCount 0` |
+| 17:16 | 안전 정책 사본 남기기(운영 정책 읽기) | `policy_capture · captured` (`s4-rls-v1`) |
+| 미실행 | `supabase/10-policy-backup.sql`(시험 정책과 차이 보기) | 학생이 실행한 뒤 적습니다 |
+| 미실행 | `supabase/10-policy-restore-test.sql` | 학생이 실행한 뒤 적습니다 |
 
 ## 메모 한 건 복원 시험
 
