@@ -3,7 +3,7 @@
   "version": "zone-v10",
   "description": "침해 전에 검증한 판정기 안전 정책 사본. 8·9단계 규칙에 10단계 자기 메모 복원 경로(zone_notes_restore)를 더한 src/decider.mjs와 같은 내용입니다.",
   "snapshotPath": "policy/safe/decider.zone-v10.mjs",
-  "targetPath": "src/decider.mjs",
+  "targetPath": "policy/test/decider.mjs",
   "sourceCommit": "ddb7e78b62fe9a747fd4ae19ee321f073a3c3592",
   "sha256": "9a410d7607f61fd435222ac1bed958cefc93b40fd18bb22e6fa41c1ab44fed4e",
   "ruleIds": [
@@ -15,5 +15,6 @@
     "zone_notes_no_bulk",
     "zone_notices_instructor",
     "zone_notes_restore"
-  ]
+  ],
+  "operatingPolicy": "src/decider.mjs (읽기만, 복원 대상 아님)"
 }

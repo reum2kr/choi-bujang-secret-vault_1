@@ -1,4 +1,3 @@
-// 10단계 시험 정책(운영 정책 src/decider.mjs와 별개). 3차 침공 훈련용으로 변조된 상태입니다.
 // ALEPH SDP 엔진이 확인한 요청만 받는 학생 판정기입니다.
 // 요청 계약(docs/DECIDER_REQUEST.md)의 값 중 로그인(subjectId)·기기 등록 여부(deviceRegistered)·
 // 동작(method)·경로(route)·엔진이 넘긴 접속 사건(signals, recentEvents)·재로그인 확인(stepUp)만 봅니다.
@@ -17,7 +16,7 @@ export const RULE_IDS = Object.freeze([
 // 경로의 마지막 칸은 자료 ID뿐이며, 쿼리로 기능을 고르지 않습니다.
 const ZONE_ROUTES = Object.freeze({
   // 메모 전체 목록은 여러 사람의 자료를 한꺼번에 여는 경로라 판정기에서 허용하지 않습니다(자기 메모는 한 건씩만).
-  'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_no_bulk',      access: 'allow' },
+  'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_no_bulk',      access: 'deny_bulk' },
   'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
   'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
   // 10단계: 복원은 메모 한 건만, 본문 없이 ID로만 부릅니다. 사본 검증(ID·소유자·내용 해시가 침해 전 기록과 같은지)은 복원 API가 합니다.
@@ -25,9 +24,9 @@ const ZONE_ROUTES = Object.freeze({
   // 강사 공지 구역: 강사만 들어갈 수 있는 구역입니다(학생의 자기 메모 구역과 다름).
   // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   // 강사 여부는 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
-  'GET /notices':      { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'allow' },
-  'GET /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'allow' },
-  'PUT /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'allow' },
+  'GET /notices':      { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
+  'GET /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
+  'PUT /notices/:id':  { zone: 'notices', ruleId: 'zone_notices_instructor', access: 'instructor_required' },
 });
 // 구역별로 받아들이는 엔진 서비스 이름. 메모 경로는 notes 서비스만, 공지 경로는 notes(같은 자료실)·notices만.
 const SERVICE_OK = Object.freeze({
@@ -121,7 +120,7 @@ const answer = (request, decision, reasonCode, ruleId) => ({
 
 export async function decide(request) {
   // device_registered: 등록 상태가 정확히 true일 때만 다음으로 넘어갑니다. 값이 없거나 false면 거부.
-  if (false) {
+  if (request?.deviceRegistered !== true) {
     return answer(request, 'deny', 'device_not_registered', 'device_registered');
   }
   const loggedIn = typeof request.subjectId === 'string' && request.subjectId.length > 0;

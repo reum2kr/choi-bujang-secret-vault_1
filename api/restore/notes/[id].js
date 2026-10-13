@@ -6,7 +6,7 @@
 //   3) 미리보기(X-Restore-Preview: 1)면 복원할 버전과 바뀔 항목만 돌려주고 끝냅니다(쓰기 없음).
 //   4) 그 ID 한 건만 넣거나 고친 뒤, 다시 읽어 ID·소유자·내용 해시가 기록과 같은지 확인합니다. 다른 메모는 건드리지 않습니다.
 //   5) 결과를 restore_audit에 한 줄 덧붙입니다(고치기·지우기 불가). 응답과 로그에 메모 본문·토큰·이메일은 넣지 않습니다.
-import { contentSha256, verifyCopy, verifyRestored } from '../../../lib/backup-verify.mjs';
+import { contentSha256, ownerSha256, verifyCopy, verifyRestored } from '../../../lib/backup-verify.mjs';
 import { UUID, fail, pathId, requireLogin, send } from '../../../lib/notes-server.mjs';
 import { logDeny, markResource } from '../../../lib/zones.mjs';
 
@@ -121,6 +121,9 @@ export default async function handler(request, response) {
   return send(response, 200, {
     id: noteId, result, backupLabel: label,
     idMatches: true, ownerMatches: true, contentHashMatches: true,
-    contentSha256: entry.content_sha256, audited,
+    contentSha256: entry.content_sha256,
+    // 다시 읽은 복원 행의 값(소유자는 지문만). 호출한 쪽이 침해 전 기록과 직접 비교할 수 있습니다.
+    restored: { id: after.id, ownerSha256: ownerSha256(after.owner_id), contentSha256: contentSha256(after.title, after.body) },
+    audited,
   });
 }

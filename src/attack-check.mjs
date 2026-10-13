@@ -214,12 +214,21 @@ async function liveRestoreChecks(app, config) {
   const restorePath = (id) => config.restoreRoute.slice(5).replace(':id', id);
   const short = (v) => String(v ?? '').slice(0, 12);
   const preview = (id) => authed(app, 'POST', restorePath(id), b.token, { headers: { 'X-Restore-Preview': '1' } });
-  // 복원한 뒤 다시 읽어, 서버 응답이 아니라 저장소의 침해 전 기록과 직접 대조합니다.
+  // 복원한 뒤 다시 읽어, 사본(침해 전 기록 backup/notes-manifest.json) 값과 나란히 적고 직접 비교합니다.
   const recheck = async (entry, done) => {
     const reread = await authed(app, 'GET', `/api/notes/${entry.id}`, b.token);
     const hash = reread.status === 200 ? contentSha256(reread.data.title, reread.data.body) : null;
-    return `ID ${reread.data?.id === entry.id ? '같음' : '다름'} · 소유자 ${done.data?.ownerMatches === true && reread.status === 200 ? '같음' : '확인 못 함'} · 내용 해시 ${short(hash)} ${hash === entry.content_sha256 ? '같음' : '다름'}`;
+    const owner = done.data?.restored?.ownerSha256 ?? null;
+    const same = (x, y) => (x && x === y ? '같음' : '다름');
+    return `ID ${reread.data?.id ?? '-'} ${same(reread.data?.id, entry.id)} · 소유자 지문 ${short(owner)}/사본 ${short(entry.owner_sha256)} ${same(owner, entry.owner_sha256)} · 내용 해시 ${short(hash)}/사본 ${short(entry.content_sha256)} ${same(hash, entry.content_sha256)}`;
   };
+  // 복원 대상이 아닌 B의 다른 메모가 그대로인지 확인합니다(내용 해시 비교).
+  const snapshotOthers = async (exceptId) => {
+    const list = await authed(app, 'GET', '/api/notes', b.token);
+    return new Map((Array.isArray(list.data) ? list.data : []).filter((n) => n.id !== exceptId)
+      .map((n) => [n.id, contentSha256(n.title, n.body)]));
+  };
+  const othersSame = (before, after) => [...before].every(([id, h]) => after.get(id) === h) && before.size === after.size;
   let entry = null;
   try {
     const list = await authed(app, 'GET', '/api/notes', b.token);
@@ -233,16 +242,18 @@ async function liveRestoreChecks(app, config) {
       out.drill = `미실행: B 메모 가운데 검증 기록(${MANIFEST.label})에 있고 지금 사본과 같은 메모가 없어 복원 연습을 하지 않음 · 기록에 없는 ID HTTP ${absent.status}`;
       out.tamper = out.drill;
     } else {
+      const othersBefore = await snapshotOthers(entry.id);
       // ① 삭제 → 복원
       const removed = await authed(app, 'DELETE', `/api/notes/${entry.id}`, b.token);
       const plan1 = await preview(entry.id);
       const done1 = await authed(app, 'POST', restorePath(entry.id), b.token);
-      out.drill = `B 실제 요청: 메모 ${short(entry.id)}… 삭제 HTTP ${removed.status} → 미리보기(버전 ${plan1.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan1.data?.changes ?? []).join(',') || '-'}) → 복원 HTTP ${done1.status} ${done1.data?.result ?? done1.data?.error ?? ''} → 다시 읽어 검증 기록과 대조: ${await recheck(entry, done1)} · 기록에 없는 ID HTTP ${absent.status} 멈춤`;
+      out.drill = `B 실제 요청: 삭제 ${removed.status} → 미리보기(버전 ${plan1.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan1.data?.changes ?? []).join(',') || '-'}) → 복원 ${done1.status} ${done1.data?.result ?? done1.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done1)} · 기록에 없는 ID ${absent.status} 멈춤`;
       // ② 변조 → 복원
       const changed = await authed(app, 'PUT', `/api/notes/${entry.id}`, b.token, { body: { title: '변조된 가상 제목', body: '변조된 가상 내용' } });
       const plan2 = await preview(entry.id);
       const done2 = await authed(app, 'POST', restorePath(entry.id), b.token);
-      out.tamper = `B 실제 요청: 메모 ${short(entry.id)}… 내용 변조 HTTP ${changed.status} → 미리보기(버전 ${plan2.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan2.data?.changes ?? []).join(',') || '-'}) → 복원 HTTP ${done2.status} ${done2.data?.result ?? done2.data?.error ?? ''} → 다시 읽어 검증 기록과 대조: ${await recheck(entry, done2)}`;
+      const othersAfter = await snapshotOthers(entry.id);
+      out.tamper = `B 실제 요청: 변조 ${changed.status} → 미리보기(버전 ${plan2.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan2.data?.changes ?? []).join(',') || '-'}) → 복원 ${done2.status} ${done2.data?.result ?? done2.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done2)} · B의 다른 메모 ${othersBefore.size}건 ${othersSame(othersBefore, othersAfter) ? '그대로' : '바뀜'}`;
     }
   } catch (error) {
     out.drill = out.drill ?? `복원 연습 중 오류: ${String(error?.name ?? 'error')}`;
@@ -307,9 +318,9 @@ async function restoreChecks(app, config) {
   const { join } = await import('node:path');
   const { createHash } = await import('node:crypto');
   const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
-  const deciderPath = new URL('./decider.mjs', import.meta.url).pathname;
   const auditPath = new URL('../policy/audit.jsonl', import.meta.url).pathname;
-  const { verifySnapshot, diffPolicy, restorePolicy } = await import('../scripts/policy-restore.mjs');
+  const { verifySnapshot, diffPolicy, restorePolicy, TEST_POLICY, OPERATING_POLICY } = await import('../scripts/policy-restore.mjs');
+  const deciderPath = TEST_POLICY; // 시험 정책. 실제 운영 정책(src/decider.mjs)은 읽기만 합니다.
 
   const path = config.restoreRoute.slice(5).replace(':id', '00000000-0000-4000-8000-000000000001');
   const anonymous = await anonymousGet(app, path, {}, 'POST');
@@ -328,7 +339,7 @@ async function restoreChecks(app, config) {
     copyFileSync(deciderPath, target);
     const tampered = join(work, 'tampered.mjs');
     writeFileSync(tampered, readFileSync(deciderPath, 'utf8').replace("access: 'deny_bulk'", "access: 'allow'"));
-    const before = [sha(target), existsSync(auditPath) ? sha(auditPath) : 'none'].join();
+    const before = [sha(target), existsSync(auditPath) ? sha(auditPath) : 'none', sha(OPERATING_POLICY)].join();
     const write = process.stdout.write.bind(process.stdout);
     process.stdout.write = () => true;
     const tryRestore = async (snapshotPath) => {
@@ -337,9 +348,9 @@ async function restoreChecks(app, config) {
     let tamper;
     let none;
     try { tamper = await tryRestore(tampered); none = await tryRestore(join(work, 'none.mjs')); } finally { process.stdout.write = write; }
-    const after = [sha(target), existsSync(auditPath) ? sha(auditPath) : 'none'].join();
+    const after = [sha(target), existsSync(auditPath) ? sha(auditPath) : 'none', sha(OPERATING_POLICY)].join();
     rmSync(work, { recursive: true, force: true });
-    policyLine = `사본 ${v.manifest.version} 다시 읽어 지문 확인 · Git 대조 ${v.gitCheck} · 안전 요청 ${v.probes.length}건 기대대로 / 실행 전 표시: 복원 버전 ${v.manifest.version}, 변경 범위 ${d.identical ? '없음' : `응답이 달라지는 요청 ${d.changedProbes.length}건`} / 변조 사본 → ${tamper} · 없는 사본 → ${none} · 대상 파일·감사 기록 ${before === after ? '그대로' : '바뀜'}`;
+    policyLine = `사본 ${v.manifest.version} 다시 읽어 지문·Git(${v.manifest.sourceCommit.slice(0, 7)})·안전 요청 ${v.probes.length}건 검증 통과 / 실행 전 표시: 복원 버전 ${v.manifest.version}, 시험 정책 변경 범위 ${d.identical ? '없음' : `요청 ${d.changedProbes.length}건`} / 변조 사본 → ${tamper} · 없는 사본 → ${none} / 시험 정책·감사 기록·운영 정책(src/decider.mjs) ${before === after ? '그대로' : '바뀜'}`;
   } catch (error) {
     policyLine = `검증 실패로 중단: ${String(error?.message ?? error).slice(0, 150)}`;
   }
@@ -350,7 +361,7 @@ async function restoreChecks(app, config) {
         expected: `로그인 없는·위조 토큰 복원 요청(${config.restoreRoute})은 401·403으로 거부`,
         observed: `비로그인 POST ${path} 결과 HTTP ${anonymous.status}${anonymous.error ? ` ${anonymous.error}` : ''} (${denied(anonymous)}) · 위조 토큰 HTTP ${forged.status} (${denied(forged)})` },
       { attackId: 'policy_snapshot_verified',
-        expected: '침해 전 안전 정책 사본을 다시 읽어 검증하고 실행 전에 버전·변경 범위를 표시, 사본이 없거나 검증이 실패하면 중단',
+        expected: '침해 전 안전 정책 사본을 다시 읽어 검증하고 실행 전에 버전·변경 범위를 표시, 사본이 없거나 검증이 실패하면 중단, 실제 운영 정책은 건드리지 않음',
         observed: policyLine },
       { attackId: 'restore_b_deleted_note',
         expected: 'B 메모 삭제 뒤 복원: 사본을 다시 읽어 침해 전 검증 기록과 대조·미리보기 뒤 그 한 건만 복원, 다시 읽은 ID·소유자·내용 해시가 기록과 같음. 기록에 없는 ID는 멈춤',
