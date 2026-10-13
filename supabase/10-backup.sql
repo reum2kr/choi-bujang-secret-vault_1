@@ -1,7 +1,7 @@
 -- 10단계 제작 3: 비공개 가상 메모 사본(notes_backup)과 복원 감사 기록(restore_audit)
 -- Supabase SQL Editor에서 한 번 실행합니다. 메모 본문은 이 데이터베이스 안에만 있고 저장소에는 남기지 않습니다.
 -- 브라우저 키(anon·authenticated)는 두 표 모두 직접 읽거나 쓸 수 없습니다.
--- 서버 함수(service_role)는 사본을 읽기만, 감사 기록은 읽기·덧붙이기만 할 수 있습니다.
+-- 서버 함수(service_role)는 사본과 감사 기록을 읽기·덧붙이기만 할 수 있습니다(새 메모를 만들 때 처음 사본을 덧붙임).
 
 -- ① 표 만들기 ---------------------------------------------------------------
 create table if not exists public.notes_backup (
@@ -27,7 +27,7 @@ alter table public.notes_backup enable row level security;
 alter table public.restore_audit enable row level security;
 
 revoke all on table public.notes_backup, public.restore_audit from public, anon, authenticated, service_role;
-grant select on table public.notes_backup to service_role;
+grant select, insert on table public.notes_backup to service_role;
 grant select, insert on table public.restore_audit to service_role;
 
 -- 사본과 감사 기록은 고치거나 지울 수 없게 막습니다(SQL Editor의 관리자 계정도 포함).
@@ -66,7 +66,7 @@ select count(*) as backed_up,
        count(*) filter (where content_sha256 <> encode(sha256(convert_to(title || E'\n' || body, 'UTF8')), 'hex')) as mismatched
 from public.notes_backup;
 
--- 권한 확인: anon·authenticated 줄은 없어야 하고, service_role은 notes_backup SELECT, restore_audit INSERT·SELECT만.
+-- 권한 확인: anon·authenticated 줄은 없어야 하고, service_role은 notes_backup·restore_audit 모두 INSERT·SELECT만.
 select grantee, table_name, string_agg(privilege_type, ', ' order by privilege_type) as privileges
 from information_schema.role_table_grants
 where table_schema = 'public' and table_name in ('notes_backup', 'restore_audit')

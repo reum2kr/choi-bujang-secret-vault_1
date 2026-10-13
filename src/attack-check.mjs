@@ -247,17 +247,18 @@ async function liveRestoreChecks(app, config) {
       // ① 삭제 → 복원
       const removed = await authed(app, 'DELETE', `/api/notes/${entry.id}`, b.token);
       const plan1 = await preview(entry.id);
-      // 확인 없이 보낸 복원 요청은 미리보기만 돌려주고 쓰지 않아야 합니다(메모는 여전히 없음).
-      const unconfirmed = await authed(app, 'POST', restorePath(entry.id), b.token);
+      // 사본 버전과 다른 확인 값을 붙인 복원 요청은 멈추고 쓰지 않아야 합니다(메모는 여전히 없음).
+      const wrong = await authed(app, 'POST', restorePath(entry.id), b.token, { headers: { 'X-Restore-Confirm': 'wrong-version' } });
       const stillGone = await authed(app, 'GET', `/api/notes/${entry.id}`, b.token);
-      const done1 = await authed(app, 'POST', restorePath(entry.id), b.token, { headers: { 'X-Restore-Confirm': plan1.data?.backupLabel ?? '' } });
-      out.drill = `B 실제 요청: 삭제 ${removed.status} → 미리보기(버전 ${plan1.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan1.data?.changes ?? []).join(',') || '-'}) → 확인 없는 요청 ${unconfirmed.data?.result ?? unconfirmed.status}·쓰기 ${stillGone.status === 404 ? '없음' : '있음'} → 확인 뒤 복원 ${done1.status} ${done1.data?.result ?? done1.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done1)} · 기록에 없는 ID ${absent.status} 멈춤`;
+      // 머리글 없는 POST 한 번으로 복원합니다(경로의 ID만 보냄, 본문 없음).
+      const done1 = await authed(app, 'POST', restorePath(entry.id), b.token);
+      out.drill = `B 실제 요청: 삭제 ${removed.status} → 미리보기(버전 ${plan1.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan1.data?.changes ?? []).join(',') || '-'}) → 틀린 확인 ${wrong.status}·쓰기 ${stillGone.status === 404 ? '없음' : '있음'} → POST 복원 ${done1.status} ${done1.data?.result ?? done1.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done1)} · 기록에 없는 ID ${absent.status} 멈춤`;
       // ② 변조 → 복원
       const changed = await authed(app, 'PUT', `/api/notes/${entry.id}`, b.token, { body: { title: '변조된 가상 제목', body: '변조된 가상 내용' } });
       const plan2 = await preview(entry.id);
-      const done2 = await authed(app, 'POST', restorePath(entry.id), b.token, { headers: { 'X-Restore-Confirm': plan2.data?.backupLabel ?? '' } });
+      const done2 = await authed(app, 'POST', restorePath(entry.id), b.token);
       const othersAfter = await snapshotOthers(entry.id);
-      out.tamper = `B 실제 요청: 변조 ${changed.status} → 미리보기(버전 ${plan2.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan2.data?.changes ?? []).join(',') || '-'}) → 확인 뒤 복원 ${done2.status} ${done2.data?.result ?? done2.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done2)} · B의 다른 메모 ${othersBefore.size}건 ${othersSame(othersBefore, othersAfter) ? '그대로' : '바뀜'}`;
+      out.tamper = `B 실제 요청: 변조 ${changed.status} → 미리보기(버전 ${plan2.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan2.data?.changes ?? []).join(',') || '-'}) → POST 복원 ${done2.status} ${done2.data?.result ?? done2.data?.error ?? ''} → 다시 읽음: ${await recheck(entry, done2)} · B의 다른 메모 ${othersBefore.size}건 ${othersSame(othersBefore, othersAfter) ? '그대로' : '바뀜'}`;
     }
   } catch (error) {
     out.drill = out.drill ?? `복원 연습 중 오류: ${String(error?.name ?? 'error')}`;

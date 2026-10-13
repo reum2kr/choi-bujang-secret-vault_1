@@ -1,11 +1,12 @@
 // 10단계 제작 3: POST /api/restore/notes/:id  (서비스: 메모 자료실 notes)
 // 비공개 가상 메모 사본(notes_backup)에서 지정한 한 건만 notes로 되살립니다.
 //   1) 로그인 토큰으로 요청자를 확인합니다. 브라우저가 보낸 owner_id·userId·내용은 받지 않습니다(본문은 비어 있어야 함, 쿼리 거부).
-//   2) 사본을 다시 읽어, 침해 전에 검증해 커밋한 기록(backup/notes-manifest.json)과 ID·소유자·내용 해시를 대조합니다.
-//      기록에 없거나(사본 없음) 하나라도 다르면(검증 실패) 아무것도 쓰지 않고 멈춥니다(404·409).
-//   3) 실행 전에 복원할 버전과 바뀔 항목을 보여 줍니다. 머리글 X-Restore-Confirm에 그 버전을 적어 다시 보내기 전에는
-//      (또는 X-Restore-Preview: 1이면) 미리보기만 돌려주고 아무것도 쓰지 않습니다.
-//   4) 확인을 받으면 그 ID 한 건만 넣거나 고친 뒤, 다시 읽어 ID·소유자·내용 해시가 기록과 같은지 확인합니다.
+//   2) 사본을 다시 읽어 ID·소유자·내용 해시를 대조합니다. 침해 전 메모는 커밋한 검증 기록(backup/notes-manifest.json)과,
+//      그 뒤에 만든 메모는 만들 때 남긴 처음 사본의 해시를 다시 계산해 대조합니다(lib/backup-verify.mjs).
+//      사본이 없거나 남의 것이면 404, 하나라도 다르면(검증 실패) 409로, 아무것도 쓰지 않고 멈춥니다.
+//   3) X-Restore-Preview: 1이면 복원할 버전과 바뀔 항목만 보여 주고 쓰지 않습니다(화면의 복원 버튼은 이것을 먼저 보여 줌).
+//      X-Restore-Confirm을 보냈는데 그 값이 사본 버전과 다르면 쓰지 않고 409로 멈춥니다.
+//   4) 그 ID 한 건만 넣거나 고친 뒤, 다시 읽어 ID·소유자·내용 해시가 사본과 같은지 확인합니다.
 //      이 검증이 실패하면 쓰기 전 상태로 되돌리고 멈춥니다. 다른 메모는 건드리지 않습니다.
 //   5) 결과를 restore_audit에 한 줄 덧붙입니다(고치기·지우기 불가). 응답과 로그에 메모 본문·토큰·이메일은 넣지 않습니다.
 import { contentSha256, ownerSha256, verifyCopy, verifyRestored } from '../../../lib/backup-verify.mjs';
@@ -51,7 +52,7 @@ export default async function handler(request, response) {
   const noteId = id.toLowerCase();
   markResource(response, 'notes', noteId);
   const confirmLabel = typeof request.headers?.['x-restore-confirm'] === 'string' ? request.headers['x-restore-confirm'] : null;
-  const preview = request.headers?.['x-restore-preview'] === '1' || !confirmLabel;
+  const preview = request.headers?.['x-restore-preview'] === '1';
 
   // 2) 사본 다시 읽기 → 침해 전 검증 기록과 대조. 실패하면 여기서 멈춤(쓰기 없음).
   const { data: copy, error: copyError } = await db.from('notes_backup')
@@ -83,8 +84,8 @@ export default async function handler(request, response) {
   const changes = !current ? ['note']
     : [current.title !== copy.title ? 'title' : null, current.body !== copy.body ? 'body' : null].filter(Boolean);
 
-  // 3) 미리보기: 복원할 버전과 바뀔 항목만 보여 주고 끝냄. 확인한 버전이 사본 버전과 다르면 쓰지 않음.
-  if (preview || confirmLabel !== label) {
+  // 3) 미리보기 요청이면 복원할 버전과 바뀔 항목만 보여 주고 끝냄. 확인 머리글의 버전이 사본 버전과 다르면 쓰지 않음.
+  if (preview || (confirmLabel !== null && confirmLabel !== label)) {
     await audit(db, { note_id: noteId, actor_id: userId, result: preview ? 'previewed' : 'stopped_confirm_mismatch', detail: label });
     return send(response, preview ? 200 : 409, {
       id: noteId, result: preview ? 'preview' : 'confirm_mismatch', backupLabel: label, verified: true,
