@@ -114,6 +114,7 @@ async function zoneChecks(app) {
   const ask = (patch) => decide({ ...normal, requestId: crypto.randomUUID(), ...patch });
   const said = (o) => `${o.decision} · ${o.reasonCode} · ${o.ruleIds.join(',')}`;
   const own = await ask({});
+  const otherOwner = await ask({ subjectId: 'other_fixture' });
   const noticeWrite = await ask({ method: 'PUT', route: 'PUT /notices/:id', path: '/notices/demo' });
   const noticeRead = await ask({ route: 'GET /notices/:id', path: '/notices/demo' });
   const exportPath = await ask({ path: '/notes/export' });
@@ -123,6 +124,9 @@ async function zoneChecks(app) {
     { attackId: 'zone_own_note_read',
       expected: '등록 기기·로그인 사용자의 자기 메모 구역(GET /notes/:id)은 allow',
       observed: `판정기 응답 ${said(own)}` },
+    { attackId: 'zone_other_user_note_read',
+      expected: '다른 사용자가 이미 다른 주인의 구역으로 묶인 메모 경로(GET /notes/:id)를 요청하면 deny · zone_notes_owner',
+      observed: `판정기 응답 ${said(otherOwner)}` },
     { attackId: 'zone_student_notice_write',
       expected: '일반 학생의 강사 공지 수정(PUT /notices/:id)은 deny · instructor_required',
       observed: `판정기 응답 ${said(noticeWrite)}` },

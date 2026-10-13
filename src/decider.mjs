@@ -7,7 +7,7 @@
 // 8단계 zone_*: 자원을 메모(notes)·공지(notices) 구역으로 나누고, 엔진이 확인한 사용자·기기·메서드·정확한 경로로만 판단합니다.
 export const RULE_IDS = Object.freeze([
   'starter.deny', 'device_registered', 'step_up_required',
-  'zone_route_allowlist', 'zone_notes_self', 'zone_notices_instructor',
+  'zone_route_allowlist', 'zone_notes_self', 'zone_notes_owner', 'zone_notices_instructor',
 ]);
 
 // ── 8단계 제작 2: 구역별 허용 경로표 ─────────────────────────────────────────────
@@ -15,8 +15,8 @@ export const RULE_IDS = Object.freeze([
 // 경로의 마지막 칸은 자료 ID뿐이며, 쿼리로 기능을 고르지 않습니다.
 const ZONE_ROUTES = Object.freeze({
   'GET /notes':        { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
-  'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
-  'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow' },
+  'GET /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow', perItem: true },
+  'PUT /notes/:id':    { zone: 'notes',   ruleId: 'zone_notes_self',         access: 'allow', perItem: true },
   // 강사 공지 구역: 강사만 들어갈 수 있는 구역입니다(학생의 자기 메모 구역과 다름).
   // 현재 판정 요청 계약에는 엔진이 확인한 강사 역할이 없어서(request.role 없음) 판정기는 모든 요청자를 일반 학생으로 보고 거부합니다.
   // 강사 여부는 자료 API가 DB의 instructors 표로 다시 확인합니다. 역할 계약이 생기기 전까지 여기서 허용하지 않습니다.
@@ -141,7 +141,28 @@ export async function decide(request) {
   if (anomaly(ctx) && !(ctx.stepUp.verified && ctx.stepUp.authAgeSeconds <= FRESH_LOGIN_SECONDS)) {
     return answer(request, 'step_up', 'step_up_required', 'step_up_required');
   }
-  // 메모 구역은 "자기 메모" 구역입니다. 판정기는 소유자를 알 수 없으므로(계약에 소유자 정보 없음)
-  // 자료 API가 검증된 사용자와 저장된 owner_id를 다시 대조해 남의 메모는 404로 거부합니다.
+  // zone_notes_owner: 메모 한 건 경로는 처음 허용한 사용자·반·프로젝트의 구역으로 묶습니다.
+  // 다른 사용자(또는 다른 반·프로젝트)가 같은 정확한 경로로 오면 거부합니다. 목록(/notes)은 묶지 않습니다.
+  if (zone.zone === 'notes' && zone.perItem) {
+    const owner = zoneOwnerOf(request);
+    const key = normalizedPath(request);
+    const bound = NOTE_ZONE_OWNERS.get(key);
+    if (bound && bound !== owner) {
+      return answer(request, 'deny', 'route_not_allowed', 'zone_notes_owner');
+    }
+    if (!bound) bindZoneOwner(key, owner);
+  }
+  // 판정기가 묶어 둔 구역 주인과 별개로, 자료 API도 검증된 사용자와 저장된 owner_id를 다시 대조해 남의 메모는 404로 거부합니다.
   return { ...answer(request, 'allow', 'approved', 'device_registered'), ruleIds: ['device_registered', zone.ruleId] };
+}
+
+// ── 8단계 구역 주인 기억 ─────────────────────────────────────────────────────────
+// 판정기 안에서만 쓰는 기억입니다(파일·외부 저장 없음). 너무 커지지 않게 오래된 것부터 지웁니다.
+const NOTE_ZONE_OWNERS = new Map();
+const MAX_ZONE_OWNERS = 10_000;
+const zoneOwnerOf = (request) => `${request.classId ?? ''}|${request.projectId ?? ''}|${request.subjectId}`;
+const normalizedPath = (request) => request.path.replace(/^\/api(?=\/)/u, '').toLowerCase();
+function bindZoneOwner(key, owner) {
+  if (NOTE_ZONE_OWNERS.size >= MAX_ZONE_OWNERS) NOTE_ZONE_OWNERS.delete(NOTE_ZONE_OWNERS.keys().next().value);
+  NOTE_ZONE_OWNERS.set(key, owner);
 }

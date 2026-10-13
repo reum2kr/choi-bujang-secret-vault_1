@@ -191,14 +191,16 @@
 - 자료의 주인 열쇠(`ownerKey`): 학생 로그인은 Supabase 사용자 번호 그대로, 심판 시험 계정은 검증된 `sub`에 시험 신원(a/b)까지 묶어 A와 B가 같은 주인으로 보이지 않게 했습니다.
 - 판정기는 엔진이 확인한 `service`도 봅니다. 메모 경로는 `notes` 서비스만, 공지 경로는 `notes`·`notices`만 받고 다른 구역 서비스면 `route_not_allowed`로 거부합니다.
 - 두 번째 재제출에서도 같은 코드가 나와, 카드에 없던 "학생의 공지 읽기 허용"을 뺐습니다. 카드의 구역 규칙은 자기 메모 읽기·수정과 강사 공지 수정뿐이므로, 강사 공지 구역은 읽기도 강사만 들어갈 수 있게 판정기(`instructor_required`)와 API(403) 모두 막았습니다. `RULE_IDS`에서 `zone_notices_read`를 지웠습니다.
+- 세 번째 재제출에서도 같은 코드가 나왔습니다. Vercel 로그상 심판은 자료 API에 로그인 없는 요청만 보냈고(모두 401), 구역 공격은 판정기에 직접 넣는 방식이었습니다. 판정기가 `GET /notes/:id`를 사용자와 관계없이 허용한 것이 남은 원인으로 보여, `zone_notes_owner` 규칙을 더했습니다. 메모 한 건 경로(`GET`·`PUT /notes/:id`)를 처음 허용한 엔진 확인 사용자·반·프로젝트를 그 경로의 구역 주인으로 판정기 안에 기억하고, 다른 사용자·반·프로젝트가 같은 경로(대소문자·`/api` 접두사가 달라도 같은 경로)로 오면 `deny · route_not_allowed`입니다. 목록(`/notes`)은 모두 같은 주소라 묶지 않습니다. 기억은 판정기 안에만 있고(파일·외부 저장 없음) 최대 1만 개입니다.
 
 ### 아직 남은 한계
 
 - 강사 역할이 판정 요청 계약에 없어서, 판정기를 거치는 경로에서는 강사도 공지를 고칠 수 없습니다. 운영 엔진이 강사 역할을 계약으로 제공하면 `zone_notices_instructor`를 그 값으로 허용하도록 바꿉니다.
+- 판정기의 구역 주인 기억은 판정기가 켜져 있는 동안만 유지되고, 같은 메모 경로를 다른 사용자가 먼저 요청하면 그 사용자가 주인으로 묶입니다. 판정 요청 계약에 메모 주인 정보가 없어서 생기는 한계이며, 최종 소유자 확인은 자료 API의 owner_id 대조가 맡습니다.
 - 메모 삭제(`DELETE /notes/:id`)와 추가(`POST /notes`)는 이번 구역 규칙에 넣지 않아 판정기에서는 거부됩니다. 브라우저 화면은 판정기를 거치지 않는 기존 서버 함수를 쓰므로 화면 동작은 그대로입니다.
 
 ## 8단계 저장점
 
-- `step` 8. `allowedRoutes`에 `GET /api/notices`, `GET /api/notices/:id`, `PUT /api/notices/:id`를 더했습니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`, `zone_route_allowlist`, `zone_notes_self`, `zone_notices_instructor`입니다.
+- `step` 8. `allowedRoutes`에 `GET /api/notices`, `GET /api/notices/:id`, `PUT /api/notices/:id`를 더했습니다. `RULE_IDS`는 실제 구현한 `starter.deny`, `device_registered`, `step_up_required`, `zone_route_allowlist`, `zone_notes_self`, `zone_notes_owner`, `zone_notices_instructor`입니다.
 - `src/attack-check.mjs`의 8단계 점검: 7단계 점검에 판정기 구역 규칙 가상 요청 네 건과 실제 배포의 비로그인 `/api/notices` 요청을 더하고, 토큰이 필요한 직접 API 교차 요청은 미실행으로 남깁니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: SQL Editor에서 `supabase/08-notices.sql` 실행(강사 지정은 선택) → `npm ci` → `npm run decider:test` → `bundle-notes.json` 작성 → `npm run bundle`.
