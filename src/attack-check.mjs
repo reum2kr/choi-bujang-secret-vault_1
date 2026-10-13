@@ -118,7 +118,7 @@ async function stepUpChecks({ compact = false } = {}) {
 
 // 8단계: 판정기 구역 규칙(가상 요청)과, 실제 배포의 공지 구역 비로그인 요청 결과만 적습니다.
 // 로그인 토큰이 필요한 A/B·강사 요청은 이 스크립트로 보내지 않아 미실행으로 남깁니다.
-async function zoneChecks(app, { compact = false } = {}) {
+async function zoneChecks(app, { compact = false, crossObserved = null } = {}) {
   const { decide } = await import('./decider.mjs');
   const { fixtureRequests } = await import('../scripts/fixture-7.mjs');
   const { normal } = fixtureRequests();
@@ -136,7 +136,7 @@ async function zoneChecks(app, { compact = false } = {}) {
     observed: `비로그인 /api/notices 요청 결과 HTTP ${notices.status}${notices.error ? ` ${notices.error}` : ''}${notices.notes === null ? ', 자료 없음' : `, ${notices.notes}건`}` };
   const crossLine = { attackId: 'zone_api_cross_owner',
     expected: '메뉴를 우회한 직접 API 요청: B의 A 메모 GET·PUT은 404, 학생의 공지 GET·PUT은 403 INSTRUCTOR_REQUIRED',
-    observed: '미실행: 로그인 토큰이 필요해 이 스크립트로는 보내지 않음. 자료 API 소유자·강사 대조는 가짜 DB 로컬 시험으로 확인' };
+    observed: crossObserved ?? '미실행: 로그인 토큰이 필요해 이 스크립트로는 보내지 않음. 자료 API 소유자·강사 대조는 가짜 DB 로컬 시험으로 확인' };
   const short = (o) => `${o.decision}(${o.reasonCode})`; // 한 줄 300자 한도에 맞춰 결정과 이유 코드만
   if (compact) {
     // 10단계부터는 제출 점검 20개 한도 때문에 판정기 구역 가상 요청 여섯 건을 한 줄로 합쳐 적습니다(결과는 그대로 모두 기록).
@@ -186,76 +186,117 @@ async function authed(app, method, path, token, { headers = {}, body } = {}) {
   return { status: response.status, data, cookies: response.headers.getSetCookie?.() ?? [] };
 }
 
+async function login(app, email, password) {
+  const r = await authed(app, 'POST', '/api/auth/login', null, { headers: { 'X-Vault-Request': '1' }, body: { email, password } });
+  return { status: r.status, error: r.data?.error, token: typeof r.data?.accessToken === 'string' ? r.data.accessToken : null,
+    cookie: r.cookies.map((c) => c.split(';')[0]).join('; ') };
+}
+async function logout(app, session) {
+  if (session?.cookie) await authed(app, 'POST', '/api/auth/logout', session.token, { headers: { 'X-Vault-Request': '1', Cookie: session.cookie } }).catch(() => null);
+}
+
+// 실제 배포에 B(비밀값이 있으면 A도)로 로그인해 복원 연습과 복구 뒤 재시험을 보냅니다.
 async function liveRestoreChecks(app, config) {
-  const email = process.env.ALEPH_B_EMAIL;
-  const password = process.env.ALEPH_B_PASSWORD;
-  const notRun = '미실행: Codespaces 비밀값 ALEPH_B_EMAIL·ALEPH_B_PASSWORD가 없어 B 로그인 요청을 보내지 않음';
-  if (!email || !password) return { drill: notRun, retest: notRun };
+  const B = { email: process.env.ALEPH_B_EMAIL, password: process.env.ALEPH_B_PASSWORD };
+  const A = { email: process.env.ALEPH_A_EMAIL, password: process.env.ALEPH_A_PASSWORD };
+  const out = {};
+  if (!B.email || !B.password) {
+    const msg = '미실행: Codespaces 비밀값 ALEPH_B_EMAIL·ALEPH_B_PASSWORD가 없어 B 로그인 요청을 보내지 않음';
+    return { drill: msg, tamper: msg, retest: msg, cross: null, crossZone: null };
+  }
   const { contentSha256, MANIFEST, manifestEntry } = await import('../lib/backup-verify.mjs');
-  const login = await authed(app, 'POST', '/api/auth/login', null, { headers: { 'X-Vault-Request': '1' }, body: { email, password } });
-  const token = login.data?.accessToken;
-  if (login.status !== 200 || typeof token !== 'string') {
-    const msg = `미실행: B 로그인 실패 HTTP ${login.status}${login.data?.error ? ` ${login.data.error}` : ''}`;
-    return { drill: msg, retest: msg };
+  const b = await login(app, B.email, B.password);
+  if (!b.token) {
+    const msg = `미실행: B 로그인 실패 HTTP ${b.status}${b.error ? ` ${b.error}` : ''}`;
+    return { drill: msg, tamper: msg, retest: msg, cross: null, crossZone: null };
   }
   const restorePath = (id) => config.restoreRoute.slice(5).replace(':id', id);
   const short = (v) => String(v ?? '').slice(0, 12);
-  let drill;
-  let restoredId = null;
+  const preview = (id) => authed(app, 'POST', restorePath(id), b.token, { headers: { 'X-Restore-Preview': '1' } });
+  // 복원한 뒤 다시 읽어, 서버 응답이 아니라 저장소의 침해 전 기록과 직접 대조합니다.
+  const recheck = async (entry, done) => {
+    const reread = await authed(app, 'GET', `/api/notes/${entry.id}`, b.token);
+    const hash = reread.status === 200 ? contentSha256(reread.data.title, reread.data.body) : null;
+    return `ID ${reread.data?.id === entry.id ? '같음' : '다름'} · 소유자 ${done.data?.ownerMatches === true && reread.status === 200 ? '같음' : '확인 못 함'} · 내용 해시 ${short(hash)} ${hash === entry.content_sha256 ? '같음' : '다름'}`;
+  };
+  let entry = null;
   try {
-    const list = await authed(app, 'GET', '/api/notes', token);
+    const list = await authed(app, 'GET', '/api/notes', b.token);
     const notes = Array.isArray(list.data) ? list.data : [];
-    // 침해 전 검증 기록(backup/notes-manifest.json)에 있는 B 메모 가운데, 미리보기에서 바뀔 항목이 없는 한 건만 고릅니다.
-    // 사본 뒤에 고친 메모는 건드리지 않습니다.
-    let pick = null;
     for (const note of notes.filter((n) => manifestEntry(n.id))) {
-      const plan = await authed(app, 'POST', restorePath(note.id), token, { headers: { 'X-Restore-Preview': '1' } });
-      if (plan.status === 200 && plan.data?.verified === true && Array.isArray(plan.data.changes) && plan.data.changes.length === 0) {
-        pick = { note, plan: plan.data, entry: manifestEntry(note.id) };
-        break;
-      }
+      const plan = await preview(note.id);
+      if (plan.status === 200 && plan.data?.verified === true && plan.data.changes?.length === 0) { entry = manifestEntry(note.id); break; }
     }
-    const absent = await authed(app, 'POST', restorePath('00000000-0000-4000-8000-0000000000aa'), token, { headers: { 'X-Restore-Preview': '1' } });
-    if (!pick) {
-      drill = `미실행: B 메모 가운데 검증 기록(${MANIFEST.label})에 있고 지금 사본과 같은 메모가 없어 복원 연습을 하지 않음 · 기록에 없는 ID 미리보기 HTTP ${absent.status}`;
+    const absent = await preview('00000000-0000-4000-8000-0000000000aa');
+    if (!entry) {
+      out.drill = `미실행: B 메모 가운데 검증 기록(${MANIFEST.label})에 있고 지금 사본과 같은 메모가 없어 복원 연습을 하지 않음 · 기록에 없는 ID HTTP ${absent.status}`;
+      out.tamper = out.drill;
     } else {
-      const { entry } = pick;
-      const id = entry.id;
-      const removed = await authed(app, 'DELETE', `/api/notes/${id}`, token);
-      const plan = await authed(app, 'POST', restorePath(id), token, { headers: { 'X-Restore-Preview': '1' } });
-      const done = await authed(app, 'POST', restorePath(id), token);
-      const reread = await authed(app, 'GET', `/api/notes/${id}`, token);
-      restoredId = done.status === 200 ? id : null;
-      const rereadHash = reread.status === 200 ? contentSha256(reread.data.title, reread.data.body) : null;
-      // 서버 응답이 아니라 저장소의 침해 전 기록과 직접 대조합니다(소유자는 서버가 이 토큰의 주인으로만 복원하므로 목록·읽기 200으로 확인).
-      const idSame = reread.data?.id === entry.id;
-      const hashSame = rereadHash === entry.content_sha256;
-      const ownerSame = done.data?.ownerMatches === true && reread.status === 200;
-      drill = `B 실제 로그인: 메모 ${short(id)}… 미리보기(버전 ${pick.plan.backupLabel}, 바뀔 항목 없음) → 삭제 HTTP ${removed.status} → 미리보기 바뀔 항목 ${(plan.data?.changes ?? []).join(',') || '-'} → 복원 HTTP ${done.status} ${done.data?.result ?? done.data?.error ?? ''} → 다시 읽어 검증 기록과 대조: ID ${idSame ? '같음' : '다름'} · 소유자 ${ownerSame ? '같음' : '확인 못 함'} · 내용 해시 ${short(rereadHash)} ${hashSame ? '같음' : '다름'} · 기록에 없는 ID HTTP ${absent.status} 멈춤`;
+      // ① 삭제 → 복원
+      const removed = await authed(app, 'DELETE', `/api/notes/${entry.id}`, b.token);
+      const plan1 = await preview(entry.id);
+      const done1 = await authed(app, 'POST', restorePath(entry.id), b.token);
+      out.drill = `B 실제 요청: 메모 ${short(entry.id)}… 삭제 HTTP ${removed.status} → 미리보기(버전 ${plan1.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan1.data?.changes ?? []).join(',') || '-'}) → 복원 HTTP ${done1.status} ${done1.data?.result ?? done1.data?.error ?? ''} → 다시 읽어 검증 기록과 대조: ${await recheck(entry, done1)} · 기록에 없는 ID HTTP ${absent.status} 멈춤`;
+      // ② 변조 → 복원
+      const changed = await authed(app, 'PUT', `/api/notes/${entry.id}`, b.token, { body: { title: '변조된 가상 제목', body: '변조된 가상 내용' } });
+      const plan2 = await preview(entry.id);
+      const done2 = await authed(app, 'POST', restorePath(entry.id), b.token);
+      out.tamper = `B 실제 요청: 메모 ${short(entry.id)}… 내용 변조 HTTP ${changed.status} → 미리보기(버전 ${plan2.data?.backupLabel ?? '-'}, 바뀔 항목 ${(plan2.data?.changes ?? []).join(',') || '-'}) → 복원 HTTP ${done2.status} ${done2.data?.result ?? done2.data?.error ?? ''} → 다시 읽어 검증 기록과 대조: ${await recheck(entry, done2)}`;
     }
   } catch (error) {
-    drill = `복원 연습 중 오류: ${String(error?.name ?? 'error')}`;
+    out.drill = out.drill ?? `복원 연습 중 오류: ${String(error?.name ?? 'error')}`;
+    out.tamper = out.tamper ?? `변조 복원 연습 중 오류: ${String(error?.name ?? 'error')}`;
   }
-  let retest;
+
+  // ③ 복구 뒤 재시험(A 비밀값이 있으면 A 정상 요청과 B의 A 자료 요청까지)
+  let aSession = null;
+  let aNote = null;
+  let aBefore = null;
+  if (A.email && A.password) {
+    aSession = await login(app, A.email, A.password);
+    if (aSession.token) {
+      const aList = await authed(app, 'GET', '/api/notes', aSession.token);
+      aNote = Array.isArray(aList.data) && aList.data.length ? aList.data[0] : null;
+      aBefore = aNote ? contentSha256(aNote.title, aNote.body) : null;
+    }
+  }
   try {
-    const own = await authed(app, 'GET', '/api/notes', token);
-    const one = restoredId ? await authed(app, 'GET', `/api/notes/${restoredId}`, token) : null;
-    const notices = await authed(app, 'GET', '/api/notices', token);
-    const target = restoredId ?? '00000000-0000-4000-8000-0000000000aa';
-    const query = await authed(app, 'GET', `/api/notes/${target}?owner_id=00000000-0000-4000-8000-000000000001`, token);
-    const ownerBody = await authed(app, 'POST', restorePath(target), token, { body: { owner_id: '00000000-0000-4000-8000-000000000001' } });
-    const ghost = await authed(app, 'PUT', '/api/notes/00000000-0000-4000-8000-0000000000aa', token, { body: { title: 'x', body: '' } });
+    const own = await authed(app, 'GET', '/api/notes', b.token);
+    const one = entry ? await authed(app, 'GET', `/api/notes/${entry.id}`, b.token) : null;
+    const notices = await authed(app, 'GET', '/api/notices', b.token);
+    const noticeWrite = await authed(app, 'PUT', '/api/notices/00000000-0000-4000-8000-0000000000aa', b.token, { body: { title: 'x', body: '' } });
+    const target = entry?.id ?? '00000000-0000-4000-8000-0000000000aa';
+    const query = await authed(app, 'GET', `/api/notes/${target}?owner_id=00000000-0000-4000-8000-000000000001`, b.token);
+    const ownerBody = await authed(app, 'POST', restorePath(target), b.token, { body: { owner_id: '00000000-0000-4000-8000-000000000001' } });
+    const ghost = await authed(app, 'PUT', '/api/notes/00000000-0000-4000-8000-0000000000aa', b.token, { body: { title: 'x', body: '' } });
     const anon = await authed(app, 'GET', '/api/notes', null);
-    retest = `B 실제 요청 · 정상: 내 목록 ${own.status}${Array.isArray(own.data) ? `(${own.data.length}건)` : ''}${one ? ` · 복원한 메모 읽기 ${one.status}` : ''} / 금지: 공지 목록 ${notices.status} · 쿼리로 다른 주인 지정 ${query.status} · 본문 owner_id 복원 ${ownerBody.status} · 없는 메모 수정 ${ghost.status} · 비로그인 목록 ${anon.status}`;
+    let aPart = ' · A 정상 요청 미실행(A 비밀값 없음)';
+    let bToA = '';
+    if (aSession?.token && aNote) {
+      const bRead = await authed(app, 'GET', `/api/notes/${aNote.id}`, b.token);
+      const bPut = await authed(app, 'PUT', `/api/notes/${aNote.id}`, b.token, { body: { title: 'B가 바꿈', body: '' } });
+      const bDel = await authed(app, 'DELETE', `/api/notes/${aNote.id}`, b.token);
+      const bRestore = await authed(app, 'POST', restorePath(aNote.id), b.token);
+      const aList2 = await authed(app, 'GET', '/api/notes', aSession.token);
+      const aRead = await authed(app, 'GET', `/api/notes/${aNote.id}`, aSession.token);
+      const aSame = aRead.status === 200 && contentSha256(aRead.data.title, aRead.data.body) === aBefore;
+      aPart = ` · A 목록 ${aList2.status} · A 메모 읽기 ${aRead.status}(내용 ${aSame ? '그대로' : '바뀜'})`;
+      bToA = ` · B의 A 메모 읽기 ${bRead.status}·수정 ${bPut.status}·삭제 ${bDel.status}·복원 ${bRestore.status}`;
+      out.cross = `B 실제 요청으로 A 메모: 읽기 ${bRead.status} · 수정 ${bPut.status} · 삭제 ${bDel.status} · 복원 ${bRestore.status} → A가 다시 읽기 ${aRead.status}, 내용 ${aSame ? '그대로' : '바뀜'}`;
+      out.crossZone = `B 실제 요청: A 메모 읽기 ${bRead.status} · 수정 ${bPut.status} / 학생 B의 공지 목록 ${notices.status} · 공지 수정 ${noticeWrite.status}`;
+    } else if (A.email && A.password) {
+      aPart = ` · A 정상 요청 미실행(A 로그인 ${aSession?.status ?? '-'} 또는 A 메모 없음)`;
+    }
+    out.retest = `복구 뒤 실제 요청 · 정상: B 목록 ${own.status}${one ? ` · B 복원한 메모 읽기 ${one.status}` : ''}${aPart} / 금지: 공지 ${notices.status}${bToA} · 쿼리 ${query.status} · 본문 owner_id ${ownerBody.status} · 없는 메모 ${ghost.status} · 비로그인 ${anon.status}`;
   } catch (error) {
-    retest = `재시험 중 오류: ${String(error?.name ?? 'error')}`;
+    out.retest = `재시험 중 오류: ${String(error?.name ?? 'error')}`;
   }
-  // 로그아웃: 이번 점검이 만든 로그인 세션을 닫습니다.
-  const cookie = login.cookies.map((c) => c.split(';')[0]).join('; ');
-  if (cookie) await authed(app, 'POST', '/api/auth/logout', token, { headers: { 'X-Vault-Request': '1', Cookie: cookie } }).catch(() => null);
-  return { drill, retest };
+  await logout(app, aSession);
+  await logout(app, b);
+  return out;
 }
 
+// 10단계: 복원 점검을 먼저 하고(앞쪽 줄), 그 뒤에 1~9단계 점검을 다시 실행합니다(복구 뒤 재시험).
 async function restoreChecks(app, config) {
   if (typeof config.restoreRoute !== 'string' || !/^POST \/api\/[A-Za-z0-9/_-]+\/:id$/u.test(config.restoreRoute)) {
     throw new Error('aleph.config.json의 restoreRoute를 먼저 넣어 주세요.');
@@ -280,6 +321,7 @@ async function restoreChecks(app, config) {
   let policyLine;
   try {
     const v = await verifySnapshot();
+    const d = await diffPolicy(deciderPath);
     const work = mkdtempSync(join(tmpdir(), 'aleph-restore-'));
     const target = join(work, 'decider.mjs');
     copyFileSync(deciderPath, target);
@@ -296,36 +338,34 @@ async function restoreChecks(app, config) {
     try { tamper = await tryRestore(tampered); none = await tryRestore(join(work, 'none.mjs')); } finally { process.stdout.write = write; }
     const after = [sha(target), existsSync(auditPath) ? sha(auditPath) : 'none'].join();
     rmSync(work, { recursive: true, force: true });
-    policyLine = `사본 ${v.manifest.version} 다시 읽어 지문 확인 · Git 대조 ${v.gitCheck} · 안전 요청 ${v.probes.length}건 모두 기대대로 / 변조 사본 → ${tamper} · 없는 사본 → ${none} · 대상 파일·감사 기록 ${before === after ? '그대로' : '바뀜'}`;
+    policyLine = `사본 ${v.manifest.version} 다시 읽어 지문 확인 · Git 대조 ${v.gitCheck} · 안전 요청 ${v.probes.length}건 기대대로 / 실행 전 표시: 복원 버전 ${v.manifest.version}, 변경 범위 ${d.identical ? '없음' : `응답이 달라지는 요청 ${d.changedProbes.length}건`} / 변조 사본 → ${tamper} · 없는 사본 → ${none} · 대상 파일·감사 기록 ${before === after ? '그대로' : '바뀜'}`;
   } catch (error) {
     policyLine = `검증 실패로 중단: ${String(error?.message ?? error).slice(0, 150)}`;
   }
-  let diffLine;
-  try {
-    const d = await diffPolicy(deciderPath);
-    diffLine = d.identical ? `복원할 버전 ${d.safe.manifest.version} · 현재 src/decider.mjs가 사본과 같음(변경 범위 없음)`
-      : `복원할 버전 ${d.safe.manifest.version} · 현재 정책이 사본과 다름: 줄 ${d.text.removed}개 빠짐·${d.text.added}개 들어옴, 응답이 달라지는 요청 ${d.changedProbes.length}건`;
-  } catch (error) {
-    diffLine = '미실행: 사본 검증이 중단되어 비교하지 않음';
-  }
   const live = await liveRestoreChecks(app, config);
-  return [
-    { attackId: 'restore_anonymous',
-      expected: `로그인 없는·위조 토큰 복원 요청(${config.restoreRoute})은 401·403으로 거부`,
-      observed: `비로그인 POST ${path} 결과 HTTP ${anonymous.status}${anonymous.error ? ` ${anonymous.error}` : ''} (${denied(anonymous)}) · 위조 토큰 HTTP ${forged.status} (${denied(forged)})` },
-    { attackId: 'policy_snapshot_verified',
-      expected: '침해 전 안전 정책 사본을 다시 읽어 지문·Git 기록·안전 요청으로 검증하고, 사본이 없거나 검증이 실패하면 중단',
-      observed: policyLine },
-    { attackId: 'policy_current_vs_snapshot',
-      expected: '실행 전에 복원할 버전과 현재 시험 정책과의 변경 범위를 표시',
-      observed: diffLine },
-    { attackId: 'restore_b_own_note',
-      expected: 'B 메모 한 건: 사본을 다시 읽어 침해 전 검증 기록과 대조·미리보기 뒤 복원하고, 다시 읽은 ID·소유자·내용 해시가 기록과 같음. 기록에 없는 ID는 멈춤',
-      observed: live.drill },
-    { attackId: 'post_restore_retest',
-      expected: '복구 뒤 B의 정상 요청(내 목록·복원한 메모 읽기)은 200, 금지 요청(공지 403, 쿼리·본문 owner_id 400, 없는 메모 404, 비로그인 401)은 거부',
-      observed: live.retest },
-  ];
+  return {
+    first: [
+      { attackId: 'restore_anonymous',
+        expected: `로그인 없는·위조 토큰 복원 요청(${config.restoreRoute})은 401·403으로 거부`,
+        observed: `비로그인 POST ${path} 결과 HTTP ${anonymous.status}${anonymous.error ? ` ${anonymous.error}` : ''} (${denied(anonymous)}) · 위조 토큰 HTTP ${forged.status} (${denied(forged)})` },
+      { attackId: 'policy_snapshot_verified',
+        expected: '침해 전 안전 정책 사본을 다시 읽어 검증하고 실행 전에 버전·변경 범위를 표시, 사본이 없거나 검증이 실패하면 중단',
+        observed: policyLine },
+      { attackId: 'restore_b_deleted_note',
+        expected: 'B 메모 삭제 뒤 복원: 사본을 다시 읽어 침해 전 검증 기록과 대조·미리보기 뒤 그 한 건만 복원, 다시 읽은 ID·소유자·내용 해시가 기록과 같음. 기록에 없는 ID는 멈춤',
+        observed: live.drill },
+      { attackId: 'restore_b_tampered_note',
+        expected: 'B 메모 변조 뒤 복원: 미리보기에 바뀔 항목(제목·내용)을 보여 주고, 복원 뒤 다시 읽은 ID·소유자·내용 해시가 침해 전 기록과 같음',
+        observed: live.tamper },
+    ],
+    last: [
+      { attackId: 'post_restore_retest',
+        expected: '복구 뒤 정상(B·A 자기 목록·메모 읽기 200)은 유지, 금지(공지 403, B의 A 메모 404, 쿼리·본문 owner_id 400, 없는 메모 404, 비로그인 401)는 거부',
+        observed: live.retest },
+    ],
+    cross: live.cross,
+    crossZone: live.crossZone,
+  };
 }
 
 // 9단계: 학생 탐지 함수(src/detect.mjs)에 가상 조회 사건을 넣어 본 결과만 적습니다.
@@ -458,6 +498,8 @@ export async function runAttackChecks(config) {
     if (typeof config.originalApiUrl !== 'string' || !config.originalApiUrl.startsWith('https://')) {
       throw new Error('aleph.config.json의 originalApiUrl을 먼저 넣어 주세요.');
     }
+    // 10단계: 복원 점검을 먼저 실행하고, 아래 1~9단계 점검은 그 뒤에 다시 보냅니다(복구 뒤 재시험).
+    const restored = config.step >= 10 ? await restoreChecks(app, config) : null;
     const noLogin = await anonymousGet(app, '/api/notes');
     const forged = await anonymousGet(app, '/api/notes', {
       Authorization: 'Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJmYWtlIn0.forged',
@@ -472,6 +514,7 @@ export async function runAttackChecks(config) {
     const describe = (r) => `HTTP ${r.status}${r.error ? ` ${r.error}` : ''}${r.notes === null ? ', 메모 없음' : `, 메모 ${r.notes}건`}`;
     const directBlocked = direct.rows === null || direct.rows === 0;
     return [
+      ...(restored ? restored.first : []),
       { attackId: 'anonymous_api_read',
         expected: '로그인 없는 /api/notes 목록 요청은 401·403 JSON 오류로 거부',
         observed: `비로그인 /api/notes 요청 결과 ${describe(noLogin)}${denied(noLogin) ? ' (거부됨)' : ' (거부되지 않음)'}` },
@@ -486,12 +529,12 @@ export async function runAttackChecks(config) {
         observed: `첫 화면 HTTP ${page.status}, 저장소 주소·키 문자열 ${keyInPage ? '발견됨' : '없음'}` },
       { attackId: 'cross_user_note_read',
         expected: 'B 로그인으로 A 메모 id를 GET·PUT·DELETE하면 404로 거부되고 A 메모는 그대로',
-        observed: '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
+        observed: restored?.cross ?? '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
       ...(config.step >= 6 ? await deviceChecks() : []),
       ...(config.step >= 7 ? await stepUpChecks({ compact: config.step >= 9 }) : []),
-      ...(config.step >= 8 ? await zoneChecks(app, { compact: config.step >= 10 }) : []),
+      ...(config.step >= 8 ? await zoneChecks(app, { compact: config.step >= 10, crossObserved: restored?.crossZone }) : []),
       ...(config.step >= 9 ? await detectChecks() : []),
-      ...(config.step >= 10 ? await restoreChecks(app, config) : []),
+      ...(restored ? restored.last : []),
     ];
   }
 

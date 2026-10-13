@@ -270,22 +270,25 @@
 
 ### 제작 4: 복구 뒤 재시험
 
-정책·자료를 되돌린 뒤 아래 점검을 다시 실행합니다. 결과는 `npm run bundle`이 만든 제출 묶음(`artifacts/submission.json`의 `attackAttempts`)에 실제로 보낸 요청의 결과만 적힙니다. 하지 않은 시험은 「미실행」으로 남기고 결과를 꾸미지 않습니다.
+`npm run bundle`은 **복원 점검을 먼저** 실행하고, **그 뒤에** 1~9단계의 정상·금지 요청을 다시 보냅니다. 제출 묶음(`artifacts/submission.json`의 `attackAttempts`)에도 이 순서대로 적힙니다. 실제로 보낸 요청의 결과만 적고, 하지 않은 시험은 「미실행」으로 남기며 결과를 꾸미지 않습니다.
+
+B·A 계정 요청은 학생이 GitHub Codespaces 비밀값(`ALEPH_B_EMAIL`·`ALEPH_B_PASSWORD`, `ALEPH_A_EMAIL`·`ALEPH_A_PASSWORD`)을 넣은 경우에만 보냅니다. 이메일·비밀번호·토큰은 결과·로그·묶음에 남기지 않고, 끝나면 로그아웃합니다.
 
 | 순서 | 단계 | 정상 요청 / 금지 요청 | 제출 묶음 점검 | 실행 여부 |
 |---|---|---|---|---|
-| 1 | 10 | 정책 사본 다시 읽기 검증, 변조·없는 사본은 중단 / 복원 버전·변경 범위 | `policy_snapshot_verified`, `policy_current_vs_snapshot` | 항상 실행 |
-| 2 | 10 | 비로그인·위조 토큰 복원 요청 거부 | `restore_anonymous` | 항상 실행(실제 배포) |
-| 3 | 10 | B 메모 한 건: 미리보기 → 삭제 → 복원 → 다시 읽어 검증 기록과 대조, 기록에 없는 ID는 멈춤 | `restore_b_own_note` | B 비밀값이 있을 때만 실행, 없으면 미실행 |
-| 4 | 3·4·5·8 | 정상: B 내 목록·복원한 메모 읽기 / 금지: 공지 목록, 쿼리로 다른 주인 지정, 본문 `owner_id`, 없는 메모 수정, 비로그인 목록 | `post_restore_retest` | B 비밀값이 있을 때만 실행, 없으면 미실행 |
+| 1 | 10 | 금지: 비로그인·위조 토큰 복원 요청 | `restore_anonymous` | 항상 실행(실제 배포) |
+| 2 | 10 | 정책 사본 다시 읽기 검증, 실행 전 복원 버전·변경 범위 표시, 변조·없는 사본은 중단 | `policy_snapshot_verified` | 항상 실행 |
+| 3 | 10 | B 메모 **삭제** → 미리보기 → 복원 → 다시 읽어 침해 전 기록과 ID·소유자·내용 해시 대조, 기록에 없는 ID는 멈춤 | `restore_b_deleted_note` | B 비밀값이 있을 때 실행, 없으면 미실행 |
+| 4 | 10 | B 메모 **변조** → 미리보기(바뀔 항목 제목·내용) → 복원 → 다시 읽어 대조 | `restore_b_tampered_note` | B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 5 | 3·5 | 금지: 비로그인·위조 토큰 메모 목록, 브라우저 키로 원본 직접 조회, 첫 화면의 키 노출 | `anonymous_api_read`, `forged_token_read`, `anon_original_api_read`, `browser_key_exposure` | 항상 실행(실제 배포) |
-| 6 | 4 | 금지: B의 A 메모 읽기·수정 | `cross_user_note_read` | 미실행(A 메모 ID가 필요) |
+| 6 | 4 | 금지: B의 A 메모 읽기·수정·삭제·복원(404), A 메모는 그대로 | `cross_user_note_read` | A·B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 7 | 6·7 | 정상: 등록 기기 allow, 재로그인 뒤 allow / 금지: 미등록 기기 deny, 복합 이상 step_up | `registered_device_read`, `unregistered_device_read`, `anomalous_context_read` | 항상 실행(판정기 가상 요청) |
 | 8 | 7 | 엔진의 실제 재로그인 흐름 | `real_step_up_block` | 미실행 |
-| 9 | 8 | 정상: 자기 메모 한 건 / 금지: 전체 목록, 공지, 기능 경로, 경로표 밖 | `zone_decider_rules`, `anonymous_notice_read` | 항상 실행 |
-| 10 | 8 | 금지: 메뉴를 우회한 직접 API 교차 요청 | `zone_api_cross_owner` | 미실행 |
+| 9 | 8 | 정상: 자기 메모 한 건 / 금지: 전체 목록, 공지, 기능 경로, 경로표 밖, 비로그인 공지 | `zone_decider_rules`, `anonymous_notice_read` | 항상 실행 |
+| 10 | 8 | 금지: 메뉴를 우회한 직접 API 요청(B의 A 메모, 학생의 공지 목록·수정) | `zone_api_cross_owner` | A·B 비밀값이 있을 때 실행, 없으면 미실행 |
 | 11 | 9 | 정상 기기 유지 / 도플갱어 기기 회수 제안 | `detect_normal_device`, `detect_doppelganger_burst` | 항상 실행(가상 사건) |
 | 12 | 9 | 엔진의 실제 회수 집행 | `live_revocation` | 미실행 |
+| 13 | 3·4·5·8 | 정상: B·A 자기 목록·메모 읽기 / 금지: 공지, B의 A 메모, 쿼리로 다른 주인, 본문 `owner_id`, 없는 메모, 비로그인 | `post_restore_retest` | B 비밀값이 있을 때 실행(A 부분은 A 비밀값이 있을 때), 없으면 미실행 |
 
 로컬에서 바로 다시 확인하는 명령: `npm run policy:diff`, `npm run decider:test`, `npm run fixture:7`, `npm run detect:test`.
 
@@ -293,10 +296,10 @@
 
 - `step` 10. 기존 `allowedRoutes`에 `POST /api/restore/notes/:id`를 더하고, `restoreRoute`를 같은 값으로 넣었습니다. `identityProvider`, `originalApiUrl`은 그대로입니다.
 - 판정기 `RULE_IDS`는 9단계 그대로 7개입니다. 판정기를 바꾸지 않았고, 안전 정책 사본과 같습니다.
-- `src/attack-check.mjs`의 10단계 점검은 위 표의 1~4번입니다. 제출 점검 20개 한도 때문에 8단계 판정기 구역 가상 요청 여섯 건은 결과를 그대로 둔 채 한 줄(`zone_decider_rules`)로 합쳤습니다. 심판 판정이 아닙니다.
+- `src/attack-check.mjs`의 10단계 점검은 위 표의 1~4번과 13번이며, 6·10번은 A·B 비밀값이 있으면 실제 요청 결과로 바뀝니다. 제출 점검 20개 한도 때문에 8단계 판정기 구역 가상 요청 여섯 건은 결과를 그대로 둔 채 한 줄(`zone_decider_rules`)로 합쳤습니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법:
   1. SQL Editor에서 `supabase/10-backup.sql` ①~③ 실행 → ④로 검증 기록 값을 뽑아 `backup/notes-manifest.json`에 넣고 커밋
-  2. (선택) GitHub Codespaces 비밀값 `ALEPH_B_EMAIL`·`ALEPH_B_PASSWORD`를 등록한 뒤 Codespace를 다시 시작
+  2. (선택) GitHub Codespaces 비밀값 `ALEPH_B_EMAIL`·`ALEPH_B_PASSWORD`, `ALEPH_A_EMAIL`·`ALEPH_A_PASSWORD`를 등록한 뒤 Codespace를 멈췄다가 다시 시작
   3. `npm ci` → `npm run policy:diff` → `bundle-notes.json` 작성 → `npm run bundle`
 
 ### 10단계 보강 기록
@@ -304,3 +307,4 @@
 - 심판 판정 시각의 Vercel 로그에는 심판의 요청이 없었습니다(묶음을 만들 때 점검 스크립트가 보낸 요청만 있음).
 - 첫 제출(`11f09c4`)에서는 「백업 검증」만 맞지 않았습니다. 그 뒤 두 번(`fa744da`, `c242051`)은 묶음 밖 결과를 문서에 적거나 가상 사본 결과를 넣어 「한 건 복원 일치」·「복원 뒤 재시험」까지 맞지 않았습니다. 그 내용을 빼고 위 표로 정리했습니다.
 - 원인으로 찾은 빈틈: 메모 사본을 사본 표에 함께 저장된 해시와만 비교하고 있었습니다. 이제는 침해 전에 검증해 커밋한 기록(`backup/notes-manifest.json`)과 대조합니다.
+- `377b3b8` 판정의 공격 목록에서 「B 메모 변조 뒤 복구 경로 호출」이 통했다고 나왔습니다. 묶음에 변조 뒤 복원 점검이 없었고, 1~9단계 점검이 복원보다 먼저 실행됐으며, A의 정상 요청과 B의 A 자료 요청이 미실행이었습니다. 변조 → 복원 점검을 더하고, 복원 점검을 먼저 실행한 뒤 1~9단계를 다시 보내도록 순서를 바꾸고, A 비밀값이 있으면 A 쪽 요청도 보내게 했습니다.
