@@ -5,6 +5,7 @@
 //      남의 메모이거나 사본이 없으면 404, 사본 지문이 틀리면 409로 중단합니다.
 //   3) 그 ID 한 건만 넣거나 고칩니다(다른 메모는 건드리지 않음). 되살린 행을 다시 읽어 ID·소유자·지문이 사본과 같은지 확인합니다.
 //   4) 결과를 restore_audit에 한 줄 덧붙입니다(고치기·지우기 불가). 응답과 로그에 메모 본문·토큰·이메일은 넣지 않습니다.
+//   머리글 X-Restore-Preview: 1 이면 1)·2)까지만 하고 복원할 버전(backupLabel)과 바뀔 항목(changes)만 돌려줍니다(쓰기 없음).
 import { contentSha256, verifyCopy, verifyRestored } from '../../../lib/backup-verify.mjs';
 import { UUID, fail, pathId, requireLogin, send } from '../../../lib/notes-server.mjs';
 import { logDeny, markResource } from '../../../lib/zones.mjs';
@@ -76,6 +77,23 @@ export default async function handler(request, response) {
     await audit(db, { note_id: noteId, actor_id: userId, result: 'conflict_other_owner', detail: copy.backup_label });
     return fail(response, 409, 'OWNER_CONFLICT', '같은 ID의 메모가 다른 소유자에게 있어 복원하지 않았습니다.');
   }
+  // 미리보기(X-Restore-Preview: 1): 사본 검증까지만 하고, 복원할 버전과 바뀔 항목을 보여 준 뒤 아무것도 쓰지 않습니다.
+  if (request.headers?.['x-restore-preview'] === '1') {
+    const changes = !current ? ['missing']
+      : [current.title !== copy.title ? 'title' : null, current.body !== copy.body ? 'body' : null].filter(Boolean);
+    await audit(db, { note_id: noteId, actor_id: userId, result: 'previewed', detail: copy.backup_label });
+    return send(response, 200, {
+      id: noteId,
+      result: 'preview',
+      backupLabel: copy.backup_label,
+      idMatches: true,
+      ownerMatches: true,
+      contentSha256: copy.content_sha256,
+      currentSha256: current ? contentSha256(current.title, current.body) : null,
+      changes,
+    });
+  }
+
   let result = 'already_matches';
   if (!current) {
     const { error } = await db.from('notes').insert({ id: noteId, owner_id: userId, title: copy.title, body: copy.body });

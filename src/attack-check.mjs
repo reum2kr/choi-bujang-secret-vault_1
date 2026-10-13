@@ -50,7 +50,7 @@ async function anonDataApi(url = `${SUPABASE_URL}/rest/v1/notes?select=id&limit=
   return { status: response.status, rows, code };
 }
 
-async function deviceChecks({ compact = false } = {}) {
+async function deviceChecks() {
   const [{ decide }, { fixtureRequests }] = await Promise.all([
     import('./decider.mjs'),
     import('../scripts/fixture-7.mjs'),
@@ -64,12 +64,6 @@ async function deviceChecks({ compact = false } = {}) {
   const describe = (result) => `판정기 응답 ${result.decision} · ${result.reasonCode} · ${result.ruleIds.join(',')}`;
   const registeredResult = await decide(normal);
   const unregisteredResult = await decide(unregistered);
-  if (compact) {
-    // 10단계부터는 제출 점검 20개 한도 때문에 등록·미등록 두 건을 한 줄로 합쳐 적습니다(결과는 그대로).
-    return [{ attackId: 'device_registered_read',
-      expected: '등록 기기의 내 자료실 읽기(GET /notes/:id)는 allow, 미등록 기기의 같은 요청은 deny · device_not_registered',
-      observed: `등록 ${describe(registeredResult)} / 미등록 ${describe(unregisteredResult)}` }];
-  }
   return [
     { attackId: 'registered_device_read',
       expected: '등록 기기의 내 자료실 읽기(GET /notes/:id)는 allow',
@@ -178,7 +172,85 @@ async function zoneChecks(app, { compact = false } = {}) {
   ];
 }
 
-// 10단계: 사전 백업을 다시 읽어 검증한 결과, 검증 실패 시 멈추는지, 복원 경로 거부를 실제로 실행한 결과만 적습니다.
+// 10단계: 실제로 보낸 요청과 실제로 실행한 검증의 결과만 적습니다.
+// B 계정 점검은 학생이 GitHub Codespaces 비밀값(ALEPH_B_EMAIL, ALEPH_B_PASSWORD)에 직접 넣은 경우에만 보냅니다.
+// 이메일·비밀번호·토큰은 결과·로그·제출 묶음에 넣지 않고, 메모 ID와 내용 해시 앞자리만 적습니다.
+async function authed(app, method, path, token, { headers = {}, body } = {}) {
+  const response = await fetch(new URL(path, app), {
+    method, redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(15000),
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await response.json(); } catch { /* JSON이 아니면 빈 값 */ }
+  return { status: response.status, data, cookies: response.headers.getSetCookie?.() ?? [] };
+}
+
+async function liveRestoreChecks(app, config) {
+  const email = process.env.ALEPH_B_EMAIL;
+  const password = process.env.ALEPH_B_PASSWORD;
+  const notRun = '미실행: Codespaces 비밀값 ALEPH_B_EMAIL·ALEPH_B_PASSWORD가 없어 B 로그인 요청을 보내지 않음';
+  if (!email || !password) return { drill: notRun, retest: notRun };
+  const { contentSha256 } = await import('../lib/backup-verify.mjs');
+  const login = await authed(app, 'POST', '/api/auth/login', null, { headers: { 'X-Vault-Request': '1' }, body: { email, password } });
+  const token = login.data?.accessToken;
+  if (login.status !== 200 || typeof token !== 'string') {
+    const msg = `미실행: B 로그인 실패 HTTP ${login.status}${login.data?.error ? ` ${login.data.error}` : ''}`;
+    return { drill: msg, retest: msg };
+  }
+  const restorePath = (id) => config.restoreRoute.slice(5).replace(':id', id);
+  const short = (v) => String(v ?? '').slice(0, 12);
+  let drill;
+  let restoredId = null;
+  try {
+    const list = await authed(app, 'GET', '/api/notes', token);
+    const notes = Array.isArray(list.data) ? list.data : [];
+    // 미리보기로 사본 검증이 통과하고 바뀔 항목이 없는 메모 한 건만 고릅니다(사본 뒤에 고친 메모는 건드리지 않음).
+    let pick = null;
+    let previewed = 0;
+    for (const note of notes.slice(0, 10)) {
+      const plan = await authed(app, 'POST', restorePath(note.id), token, { headers: { 'X-Restore-Preview': '1' } });
+      previewed += 1;
+      if (plan.status === 200 && Array.isArray(plan.data?.changes) && plan.data.changes.length === 0) { pick = { note, plan: plan.data }; break; }
+    }
+    const missing = await authed(app, 'POST', restorePath('00000000-0000-4000-8000-0000000000aa'), token, { headers: { 'X-Restore-Preview': '1' } });
+    if (!pick) {
+      drill = `B 실제 로그인: 메모 ${notes.length}건 미리보기 ${previewed}건 중 사본과 같은 메모 없음 → 복원 연습 미실행 · 사본 없는 ID 미리보기 HTTP ${missing.status}`;
+    } else {
+      const id = pick.note.id;
+      const removed = await authed(app, 'DELETE', `/api/notes/${id}`, token);
+      const plan = await authed(app, 'POST', restorePath(id), token, { headers: { 'X-Restore-Preview': '1' } });
+      const done = await authed(app, 'POST', restorePath(id), token);
+      const reread = await authed(app, 'GET', `/api/notes/${id}`, token);
+      restoredId = done.status === 200 ? id : null;
+      const rereadHash = reread.status === 200 ? contentSha256(reread.data.title, reread.data.body) : null;
+      const same = done.status === 200 && done.data?.idMatches === true && done.data?.ownerMatches === true
+        && reread.data?.id === id && rereadHash === pick.plan.contentSha256 && done.data?.contentSha256 === pick.plan.contentSha256;
+      drill = `B 실제 로그인: 메모 ${short(id)}… 사본 ${pick.plan.backupLabel} 검증 통과 → 삭제 HTTP ${removed.status} → 미리보기 바뀔 항목 ${(plan.data?.changes ?? []).join(',') || '-'} → 복원 HTTP ${done.status} ${done.data?.result ?? done.data?.error ?? ''} → 다시 읽은 ID·소유자·해시 ${short(rereadHash)} ${same ? '사본과 같음' : '사본과 다름'} · 사본 없는 ID HTTP ${missing.status} 중단`;
+    }
+  } catch (error) {
+    drill = `복원 연습 중 오류: ${String(error?.name ?? 'error')}`;
+  }
+  let retest;
+  try {
+    const own = await authed(app, 'GET', '/api/notes', token);
+    const one = restoredId ? await authed(app, 'GET', `/api/notes/${restoredId}`, token) : null;
+    const notices = await authed(app, 'GET', '/api/notices', token);
+    const target = restoredId ?? '00000000-0000-4000-8000-0000000000aa';
+    const query = await authed(app, 'GET', `/api/notes/${target}?owner_id=00000000-0000-4000-8000-000000000001`, token);
+    const ownerBody = await authed(app, 'POST', restorePath(target), token, { body: { owner_id: '00000000-0000-4000-8000-000000000001' } });
+    const ghost = await authed(app, 'PUT', '/api/notes/00000000-0000-4000-8000-0000000000aa', token, { body: { title: 'x', body: '' } });
+    const anon = await authed(app, 'GET', '/api/notes', null);
+    retest = `B 실제 요청 · 정상: 내 목록 ${own.status}${Array.isArray(own.data) ? `(${own.data.length}건)` : ''}${one ? ` · 복원한 메모 읽기 ${one.status}` : ''} / 금지: 공지 목록 ${notices.status} · 쿼리로 다른 주인 지정 ${query.status} · 본문 owner_id 복원 ${ownerBody.status} · 없는 메모 수정 ${ghost.status} · 비로그인 목록 ${anon.status}`;
+  } catch (error) {
+    retest = `재시험 중 오류: ${String(error?.name ?? 'error')}`;
+  }
+  // 로그아웃: 이번 점검이 만든 로그인 세션을 닫습니다.
+  const cookie = login.cookies.map((c) => c.split(';')[0]).join('; ');
+  if (cookie) await authed(app, 'POST', '/api/auth/logout', token, { headers: { 'X-Vault-Request': '1', Cookie: cookie } }).catch(() => null);
+  return { drill, retest };
+}
+
 async function restoreChecks(app, config) {
   if (typeof config.restoreRoute !== 'string' || !/^POST \/api\/[A-Za-z0-9/_-]+\/:id$/u.test(config.restoreRoute)) {
     throw new Error('aleph.config.json의 restoreRoute를 먼저 넣어 주세요.');
@@ -187,98 +259,67 @@ async function restoreChecks(app, config) {
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
   const { createHash } = await import('node:crypto');
-  const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex').slice(0, 12);
+  const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex');
   const deciderPath = new URL('./decider.mjs', import.meta.url).pathname;
   const auditPath = new URL('../policy/audit.jsonl', import.meta.url).pathname;
   const { verifySnapshot, diffPolicy, restorePolicy } = await import('../scripts/policy-restore.mjs');
-  const { contentSha256, verifyCopy, verifyRestored } = await import('../lib/backup-verify.mjs');
 
-  // ① 실제 배포의 복원 경로: 비로그인·위조 토큰
   const path = config.restoreRoute.slice(5).replace(':id', '00000000-0000-4000-8000-000000000001');
   const anonymous = await anonymousGet(app, path, {}, 'POST');
   const forged = await anonymousGet(app, path, {
     Authorization: 'Bearer eyJhbGciOiJub25lIn0.eyJzdWIiOiJmYWtlIn0.forged',
   }, 'POST');
-  const denied = (r) => r.status === 401 || r.status === 403;
+  const denied = (r) => (r.status === 401 || r.status === 403 ? '거부됨' : '거부되지 않음');
 
-  // ② 사전 백업(안전 정책 사본)을 디스크에서 다시 읽어 검증
-  let reread;
+  // 안전 정책 사본을 디스크에서 다시 읽어 검증하고, 변조·없는 사본으로는 멈추는지 임시 폴더에서 실제로 시도합니다.
+  let policyLine;
   try {
     const v = await verifySnapshot();
-    reread = `다시 읽음: ${v.manifest.snapshotPath} 지문 ${v.manifest.sha256.slice(0, 12)} 일치 · Git ${v.gitCheck} · 정상/금지 요청 ${v.probes.length}건 기대대로 → 검증 통과`;
+    const work = mkdtempSync(join(tmpdir(), 'aleph-restore-'));
+    const target = join(work, 'decider.mjs');
+    copyFileSync(deciderPath, target);
+    const tampered = join(work, 'tampered.mjs');
+    writeFileSync(tampered, readFileSync(deciderPath, 'utf8').replace("access: 'deny_bulk'", "access: 'allow'"));
+    const before = [sha(target), existsSync(auditPath) ? sha(auditPath) : 'none'].join();
+    const write = process.stdout.write.bind(process.stdout);
+    process.stdout.write = () => true;
+    const tryRestore = async (snapshotPath) => {
+      try { await restorePolicy(target, v.manifest.version, { snapshotPath }); return '복원됨'; } catch { return '중단'; }
+    };
+    let tamper;
+    let none;
+    try { tamper = await tryRestore(tampered); none = await tryRestore(join(work, 'none.mjs')); } finally { process.stdout.write = write; }
+    const after = [sha(target), existsSync(auditPath) ? sha(auditPath) : 'none'].join();
+    rmSync(work, { recursive: true, force: true });
+    policyLine = `사본 ${v.manifest.version} 다시 읽어 지문 확인 · Git 대조 ${v.gitCheck} · 안전 요청 ${v.probes.length}건 모두 기대대로 / 변조 사본 → ${tamper} · 없는 사본 → ${none} · 대상 파일·감사 기록 ${before === after ? '그대로' : '바뀜'}`;
   } catch (error) {
-    reread = `검증 실패로 중단: ${String(error?.message ?? error).slice(0, 150)}`;
+    policyLine = `검증 실패로 중단: ${String(error?.message ?? error).slice(0, 150)}`;
   }
-
-  // ③ 검증 실패 시 멈춤: 임시 폴더의 변조 사본·없는 사본으로 복원을 시도하고, 대상 파일·감사 기록이 그대로인지 봄
-  const work = mkdtempSync(join(tmpdir(), 'aleph-restore-'));
-  const target = join(work, 'decider-under-test.mjs');
-  copyFileSync(deciderPath, target);
-  const tampered = join(work, 'tampered-snapshot.mjs');
-  writeFileSync(tampered, readFileSync(deciderPath, 'utf8').replace("access: 'deny_bulk'", "access: 'allow'"));
-  const beforeTarget = sha(target);
-  const beforeAudit = existsSync(auditPath) ? sha(auditPath) : 'none';
-  const attempt = async (snapshotPath) => {
-    try {
-      await restorePolicy(target, 'zone-v8', { snapshotPath });
-      return '복원됨';
-    } catch (error) {
-      return /중단/u.test(String(error?.message)) ? '중단' : `오류 ${String(error?.message).slice(0, 40)}`;
-    }
-  };
-  const originalWrite = process.stdout.write.bind(process.stdout);
-  process.stdout.write = () => true; // 미리보기 출력은 제출 묶음 표시와 섞이지 않게 숨김
-  let tamperResult;
-  let missingResult;
-  try {
-    tamperResult = await attempt(tampered);
-    missingResult = await attempt(join(work, 'no-such-snapshot.mjs'));
-  } finally {
-    process.stdout.write = originalWrite;
-  }
-  const untouched = sha(target) === beforeTarget
-    && (existsSync(auditPath) ? sha(auditPath) : 'none') === beforeAudit;
-  rmSync(work, { recursive: true, force: true });
-
-  // ④ 실행 전 미리보기: 복원할 버전과 바뀔 항목
-  let preview;
+  let diffLine;
   try {
     const d = await diffPolicy(deciderPath);
-    preview = `복원 버전 ${d.safe.manifest.version} · 현재 정책 ${d.identical ? '사본과 같음, 바뀔 항목 없음' : `줄 ${d.text.removed}개 빠짐·${d.text.added}개 들어옴, 응답이 바뀌는 요청 ${d.changedProbes.length}건`}`;
+    diffLine = d.identical ? `복원할 버전 ${d.safe.manifest.version} · 현재 src/decider.mjs가 사본과 같음(변경 범위 없음)`
+      : `복원할 버전 ${d.safe.manifest.version} · 현재 정책이 사본과 다름: 줄 ${d.text.removed}개 빠짐·${d.text.added}개 들어옴, 응답이 달라지는 요청 ${d.changedProbes.length}건`;
   } catch (error) {
-    preview = `검증 실패로 미리보기 중단: ${String(error?.message ?? error).slice(0, 120)}`;
+    diffLine = '미실행: 사본 검증이 중단되어 비교하지 않음';
   }
-
-  // ⑤ 메모 사본 검증 규칙(lib/backup-verify.mjs, 복원 API와 같은 코드)을 가상 사본으로 실행
-  const owner = 'bbbbbbbb-0000-4000-8000-000000000002';
-  const copy = { id: '11111111-0000-4000-8000-000000000001', owner_id: owner, title: '가상 사본', body: '가상 내용' };
-  copy.content_sha256 = contentSha256(copy.title, copy.body);
-  const good = verifyCopy(copy, { id: copy.id, ownerId: owner });
-  const changed = verifyCopy({ ...copy, body: '변조' }, { id: copy.id, ownerId: owner });
-  const otherOwner = verifyCopy(copy, { id: copy.id, ownerId: 'aaaaaaaa-0000-4000-8000-000000000001' });
-  const missing = verifyCopy(null, { id: copy.id, ownerId: owner });
-  const after = verifyRestored({ ...copy }, copy);
-  const word = (r) => (r.ok ? '통과' : `중단 ${r.status} ${r.reason}`);
-
+  const live = await liveRestoreChecks(app, config);
   return [
-    { attackId: 'restore_route_unauthenticated',
+    { attackId: 'restore_anonymous',
       expected: `로그인 없는·위조 토큰 복원 요청(${config.restoreRoute})은 401·403으로 거부`,
-      observed: `실제 배포 POST ${path}: 비로그인 HTTP ${anonymous.status}${denied(anonymous) ? ' 거부' : ' 거부 안 됨'} · 위조 토큰 HTTP ${forged.status}${denied(forged) ? ' 거부' : ' 거부 안 됨'}` },
-    { attackId: 'backup_reread_verified',
-      expected: '사전 백업(안전 정책 사본)을 디스크에서 다시 읽어 지문·Git 기록·정상/금지 요청으로 검증한 뒤에만 복원',
-      observed: reread },
-    { attackId: 'backup_unverified_stops',
-      expected: '사본이 변조되었거나 없으면 검증 실패로 중단하고, 대상 정책 파일과 감사 기록은 바꾸지 않음',
-      observed: `변조 사본으로 복원 시도 → ${tamperResult} · 없는 사본 → ${missingResult} · 대상 파일·감사 기록 ${untouched ? '그대로' : '바뀜'}` },
-    { attackId: 'restore_preview_before_run',
-      expected: '실행 전에 복원할 버전과 바뀔 항목을 보여 주고, --confirm 없이는 바꾸지 않음',
-      observed: preview },
-    { attackId: 'note_backup_verify_rules',
-      expected: '메모 사본: ID·소유자·내용 지문이 맞을 때만 통과, 변조·남의 사본·없는 사본은 중단, 복원 뒤 다시 읽어 대조',
-      observed: `가상 사본 검증 실행: 정상 ${word(good)} · 내용 변조 ${word(changed)} · 남의 사본 ${word(otherOwner)} · 사본 없음 ${word(missing)} · 복원 뒤 대조 ${after ? '일치' : '불일치'}` },
+      observed: `비로그인 POST ${path} 결과 HTTP ${anonymous.status}${anonymous.error ? ` ${anonymous.error}` : ''} (${denied(anonymous)}) · 위조 토큰 HTTP ${forged.status} (${denied(forged)})` },
+    { attackId: 'policy_snapshot_verified',
+      expected: '침해 전 안전 정책 사본을 다시 읽어 지문·Git 기록·안전 요청으로 검증하고, 사본이 없거나 검증이 실패하면 중단',
+      observed: policyLine },
+    { attackId: 'policy_current_vs_snapshot',
+      expected: '실행 전에 복원할 버전과 현재 시험 정책과의 변경 범위를 표시',
+      observed: diffLine },
     { attackId: 'restore_b_own_note',
-      expected: 'B 로그인으로 사본의 자기 메모 한 건을 복원하면 ID·소유자·내용 지문이 사본과 같고, A 메모와 감사 기록은 그대로',
-      observed: '미실행(이 스크립트): 로그인 토큰이 필요해 보내지 않음. 학생이 B 화면에서 직접 실행한 결과는 README 10단계 재시험 기록에 적음' },
+      expected: 'B 로그인으로 사본의 자기 메모 한 건 복원: 사본을 다시 읽어 검증·미리보기 뒤 복원하고, ID·소유자·내용 해시가 사본과 같음. 사본 없는 ID는 멈춤',
+      observed: live.drill },
+    { attackId: 'post_restore_retest',
+      expected: '복구 뒤 B의 정상 요청(내 목록·복원한 메모 읽기)은 200, 금지 요청(공지 403, 쿼리·본문 owner_id 400, 없는 메모 404, 비로그인 401)은 거부',
+      observed: live.retest },
   ];
 }
 
@@ -441,7 +482,7 @@ export async function runAttackChecks(config) {
       { attackId: 'cross_user_note_read',
         expected: 'B 로그인으로 A 메모 id를 GET·PUT·DELETE하면 404로 거부되고 A 메모는 그대로',
         observed: '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
-      ...(config.step >= 6 ? await deviceChecks({ compact: config.step >= 10 }) : []),
+      ...(config.step >= 6 ? await deviceChecks() : []),
       ...(config.step >= 7 ? await stepUpChecks({ compact: config.step >= 9 }) : []),
       ...(config.step >= 8 ? await zoneChecks(app, { compact: config.step >= 10 }) : []),
       ...(config.step >= 9 ? await detectChecks() : []),
