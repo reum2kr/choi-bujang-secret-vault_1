@@ -3,7 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BYTE BACK | 점령된 자료실</title>
+  <title>최부장 비밀 자료실</title>
+  <meta name="theme-color" content="#101a28">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <style>
     :root { color-scheme: dark; font-family: system-ui, sans-serif; }
     body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
@@ -37,7 +40,7 @@
 </head>
 <body>
   <main>
-    <div class="eyebrow">BYTE BACK · 5단계 자료 요청을 서버 한곳으로</div>
+    <div class="eyebrow">BYTE BACK · 11단계 나만의 접속 앱</div>
     <h1>점령된 자료실</h1>
     <p>아래 기록은 모두 실습을 위해 만든 가상 자료입니다.</p>
 
@@ -56,6 +59,19 @@
     </section>
 
     <div class="notice">로그인과 메모 읽기·추가·수정·삭제는 모두 이 사이트의 서버 함수만 거칩니다. 서버가 로그인 토큰과 메모 주인을 검사하고, 데이터베이스는 브라우저 키로 직접 부를 수 없게 잠가 두었습니다.</div>
+
+    <p id="offline-notice" class="notice" hidden>지금은 오프라인입니다. 자료를 숨겼습니다. 연결되면 서버에 이 기기의 승인 여부를 다시 확인한 뒤에만 자료를 보여 줍니다.</p>
+
+    <section class="panel" id="device-panel" aria-labelledby="device-title" hidden>
+      <h2 id="device-title">이 기기의 승인 상태</h2>
+      <p id="device-state" class="status">서버에 이 기기의 승인 여부를 묻는 중입니다.</p>
+      <p>앱을 설치했거나 아래 버튼을 눌렀다고 승인되지 않습니다. 서버의 기기 등록부에서 승인된 기기에서만 자료실이 열립니다.</p>
+      <div class="row">
+        <button id="device-request" type="button">이 기기 승인 요청</button>
+        <button id="device-recheck" class="ghost" type="button">상태 다시 확인</button>
+      </div>
+      <p id="device-code" class="note-id" hidden></p>
+    </section>
 
     <section class="panel" id="editor-panel" aria-labelledby="editor-title" hidden>
       <h2 id="editor-title">가상 메모 추가</h2>
@@ -80,7 +96,7 @@
       <p id="restore-message" class="status" role="status" aria-live="polite"></p>
     </section>
 
-    <ul id="notes" aria-live="polite"><li>로그인하면 가상 자료가 보입니다.</li></ul>
+    <ul id="notes" aria-live="polite"><li>로그인하고 서버가 이 기기를 승인하면 가상 자료가 보입니다.</li></ul>
   </main>
   <script type="module">
     // 5단계: 화면 코드에는 자료 저장소 주소·키·SDK가 없습니다.
@@ -223,7 +239,12 @@
 
     async function loadNotes() {
       if (!currentSession?.accessToken) {
-        showNotes('로그인하면 가상 자료가 보입니다.');
+        showNotes('로그인하고 서버가 이 기기를 승인하면 가상 자료가 보입니다.');
+        return;
+      }
+      // 11단계: 서버가 이 기기를 승인했다고 답하기 전에는 메모를 요청하지도 보여 주지도 않습니다.
+      if (!deviceApproved || !navigator.onLine) {
+        showNotes('기기 승인 전에는 자료를 표시하지 않습니다.');
         return;
       }
       try {
@@ -271,6 +292,7 @@
 
     noteForm.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (!deviceApproved) return noteStatus('기기 승인 전에는 메모를 저장할 수 없습니다.', 'error');
       saveButton.disabled = true;
       const payload = JSON.stringify({ title: noteTitle.value, body: noteBody.value });
       try {
@@ -302,6 +324,7 @@
     }
     restoreForm.addEventListener('submit', async (event) => {
       event.preventDefault();
+      if (!deviceApproved) return restoreStatus('기기 승인 전에는 복원할 수 없습니다.', 'error');
       restoreButton.disabled = true;
       const id = document.querySelector('#restore-id').value.trim();
       try {
@@ -326,19 +349,107 @@
       }
     });
 
+    // 11단계: 기기 승인 상태는 서버(GET /api/device/status)의 응답으로만 정합니다.
+    // 화면은 기기 키를 만들거나 저장하지 않습니다. 기기 ID는 서버가 준 httpOnly 쿠키라 이 코드에서 읽을 수 없습니다.
+    // localStorage·sessionStorage·IndexedDB는 쓰지 않습니다.
+    const devicePanel = document.querySelector('#device-panel');
+    const deviceStateText = document.querySelector('#device-state');
+    const deviceCode = document.querySelector('#device-code');
+    const deviceRequest = document.querySelector('#device-request');
+    const offlineNotice = document.querySelector('#offline-notice');
+    let deviceApproved = false;
+
+    function lockVault(text) {
+      deviceApproved = false;
+      editorPanel.hidden = true;
+      restorePanel.hidden = true;
+      resetEditor();
+      noteStatus('');
+      restoreStatus('');
+      showNotes(text);
+    }
+    function showDevice(body) {
+      const texts = {
+        approved: '서버가 이 기기를 승인했습니다. 자료실을 엽니다.',
+        pending: '승인 대기 중입니다. 관리자가 서버에서 승인하기 전에는 자료를 보여 주지 않습니다.',
+        revoked: '승인이 취소된 기기입니다. 자료를 보여 주지 않습니다.',
+        unregistered: '아직 승인되지 않은 기기입니다. 「이 기기 승인 요청」을 누르면 승인 대기로 등록됩니다.',
+      };
+      deviceStateText.textContent = texts[body?.state] ?? '승인 상태를 알 수 없습니다. 자료를 보여 주지 않습니다.';
+      deviceStateText.className = `status ${body?.approved === true ? 'ok' : ''}`;
+      deviceCode.hidden = !body?.requestCode;
+      deviceCode.textContent = body?.requestCode ? `요청 코드 ${body.requestCode} (관리자가 서버에서 승인할 때 씁니다)` : '';
+      deviceRequest.hidden = body?.approved === true || body?.state === 'pending';
+    }
+    async function checkDevice() {
+      if (!currentSession?.accessToken) {
+        devicePanel.hidden = true;
+        lockVault('로그인하고 서버가 이 기기를 승인하면 가상 자료가 보입니다.');
+        return;
+      }
+      devicePanel.hidden = false;
+      if (!navigator.onLine) {
+        offlineNotice.hidden = false;
+        deviceStateText.textContent = '오프라인이라 승인 상태를 확인할 수 없습니다. 자료를 보여 주지 않습니다.';
+        lockVault('오프라인에서는 자료를 표시하지 않습니다.');
+        return;
+      }
+      try {
+        const body = await api('/api/device/status');
+        showDevice(body);
+        // 서버 응답이 정확히 승인(approved=true, device_registered)일 때만 기존 자료실을 엽니다.
+        if (body?.approved === true && body?.reason === 'device_registered') {
+          deviceApproved = true;
+          editorPanel.hidden = false;
+          restorePanel.hidden = false;
+          await loadNotes();
+        } else {
+          lockVault('기기 승인 전에는 자료를 표시하지 않습니다.');
+        }
+      } catch (error) {
+        deviceStateText.textContent = `승인 상태를 확인하지 못했습니다: ${error.message} 자료를 보여 주지 않습니다.`;
+        deviceStateText.className = 'status error';
+        lockVault('승인 상태를 확인하지 못해 자료를 표시하지 않습니다.');
+      }
+    }
+    deviceRequest.addEventListener('click', async () => {
+      deviceRequest.disabled = true;
+      try {
+        // 요청 본문은 비웁니다. 서버는 이 요청을 「승인 대기」로만 기록하고, 승인하지 않습니다.
+        const body = await api('/api/device/request', { method: 'POST' });
+        showDevice(body);
+      } catch (error) {
+        deviceStateText.textContent = `승인 요청 실패: ${error.message}`;
+        deviceStateText.className = 'status error';
+      } finally {
+        deviceRequest.disabled = false;
+      }
+      await checkDevice();
+    });
+    document.querySelector('#device-recheck').addEventListener('click', () => checkDevice());
+    window.addEventListener('offline', () => {
+      offlineNotice.hidden = false;
+      lockVault('오프라인에서는 자료를 표시하지 않습니다.');
+    });
+    window.addEventListener('online', () => { offlineNotice.hidden = true; checkDevice(); });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') checkDevice(); });
+
     let lastToken;
     function update(session) {
       currentSession = session;
       render(session);
-      editorPanel.hidden = !session;
-      restorePanel.hidden = !session;
-      if (!session) restoreStatus('');
+      if (!session) {
+        devicePanel.hidden = true;
+        lockVault('로그인하고 서버가 이 기기를 승인하면 가상 자료가 보입니다.');
+      }
       scheduleRefresh(session);
       if (session?.accessToken === lastToken) return;
       lastToken = session?.accessToken;
-      if (!session) { resetEditor(); noteStatus(''); }
-      loadNotes();
+      if (session) checkDevice();
     }
+
+    // 설치형 웹앱: 서비스 워커는 공개 오프라인 안내(/offline.html)만 캐시합니다. 자료·로그인·기기 상태는 캐시하지 않습니다.
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 
     // 새로고침 뒤에도 로그인을 이어 갑니다(쿠키가 없으면 로그아웃 상태).
     update(null);
