@@ -1,5 +1,5 @@
 // 12단계: 학생 판정기(src/decider.mjs)와 탐지 규칙(src/detect.mjs)에 고정된 가상 입력만 넣어 본 결과입니다.
-// 서버 함수 GET /api/checks?case=<묶음> 이 이 결과를 돌려주므로, 점검 코드와 심판의 실행기가 같은 HTTP 응답을 관측할 수 있습니다.
+// 서버 함수 GET /api/ops?case=<묶음> 이 이 결과를 돌려주므로, 점검 코드와 심판의 실행기가 같은 HTTP 응답을 관측할 수 있습니다.
 // 사용자 입력을 판정 입력으로 쓰지 않고, 실제 세션·메모·기기 상태는 읽거나 바꾸지 않습니다.
 // 결과의 synthetic: true 는 가상 입력이라는 뜻이며, 실제 엔진의 집행 결과가 아닙니다.
 import { decide, RULE_IDS } from './decider.mjs';

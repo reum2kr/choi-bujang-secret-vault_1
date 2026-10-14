@@ -1,4 +1,6 @@
 // 12단계 제작 1: GET /api/ops → 탈환 작전실 요약
+//            GET /api/ops?case=decider|detect → 학생 판정기·탐지 규칙에 고정된 가상 입력만 넣은 결과(synthetic: true)
+//   (Vercel Hobby 요금제의 서버 함수 12개 한도 때문에 가상 판정 점검을 이 함수에 함께 둡니다.)
 // 학생 판정기 규칙, 탐지 사건, 회수 상태, 복구 버전을 실제로 읽은 값으로만 돌려줍니다. 항목마다 출처(source)를 붙입니다.
 //   server_record : Supabase 서버 기록(restore_audit, notes_policy_audit, vault_devices)을 이번 요청에서 읽어 센 값
 //   code          : 배포된 코드(src/decider.mjs, policy/safe/manifest.json)를 이번 요청에서 읽어 검증한 값
@@ -8,7 +10,7 @@
 // 메모 제목·본문, 사용자 ID, 이메일, 기기 지문, 토큰은 읽지도 돌려주지도 않습니다(감사 기록은 결과 이름과 시각만 셉니다).
 import { createClient } from '@supabase/supabase-js';
 import { RULE_IDS } from '../../src/decider.mjs';
-import { runRuleCheck } from '../../src/rule-check.mjs';
+import { runRuleCheck, RULE_CHECK_CASES } from '../../src/rule-check.mjs';
 import { verifyPolicyManifest } from '../../lib/policy-pin.mjs';
 import policyManifest from '../../policy/safe/manifest.json' with { type: 'json' };
 import notesManifest from '../../backup/notes-manifest.json' with { type: 'json' };
@@ -43,7 +45,19 @@ export default async function handler(request, response) {
     response.setHeader('Allow', 'GET');
     return response.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
   }
-  if (Object.keys(request.query ?? {}).length) return response.status(400).json({ error: 'QUERY_NOT_ALLOWED' });
+  const query = request.query ?? {};
+  const keys = Object.keys(query);
+  if (keys.length) {
+    // 가상 판정 점검: case 하나만 받습니다. 사용자 입력을 판정 입력으로 쓰지 않고, 메모·토큰·기기 정보는 읽지 않습니다.
+    if (keys.length !== 1 || keys[0] !== 'case' || typeof query.case !== 'string' || !RULE_CHECK_CASES.includes(query.case)) {
+      return response.status(400).json({ error: 'UNKNOWN_CHECK', cases: RULE_CHECK_CASES });
+    }
+    try {
+      return response.status(200).json(await runRuleCheck(query.case));
+    } catch {
+      return response.status(500).json({ error: 'CHECK_FAILED' });
+    }
+  }
   const checkedAt = new Date().toISOString();
   const supa = client();
 

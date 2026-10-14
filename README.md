@@ -358,7 +358,7 @@
 - `npm run ops:table`은 1~11단계의 정상·금지 요청을 실제 배포에 다시 보내고, 아래 열을 한 표로 만듭니다: 단계 · 점검 · 정상·금지 · 기대 결과 · 실제 API 결과 · 결과(기대대로/기대와 다름/미실행) · 요청(메서드·경로 → 응답 상태) · 요청 ID · 확인 시각.
 - 요청 ID는 배포가 응답에 붙인 `x-vercel-id`입니다. 요청마다 점검 이름·경로·응답 상태·요청 ID·시각을 남기고, 요청 본문·토큰·쿠키·쿼리 값은 남기지 않습니다.
 - 결과는 `artifacts/ops-table.md`, `artifacts/ops-table.json`에 씁니다(`artifacts/`는 커밋하지 않음). 표에 비밀값이나 연락처로 보이는 내용이 있으면 쓰지 않고 멈춥니다.
-- 요청을 보내지 못했거나 계정 비밀값이 없어 보내지 않은 점검은 「미실행」으로 둡니다. 판정기·탐지 규칙의 결과는 배포의 `GET /api/checks?case=decider|detect`(고정된 가상 입력, `synthetic: true`)에서 받은 응답이며, 실제 엔진의 기기 검증·재로그인 흐름·회수 집행은 미실행입니다.
+- 요청을 보내지 못했거나 계정 비밀값이 없어 보내지 않은 점검은 「미실행」으로 둡니다. 판정기·탐지 규칙의 결과는 배포의 `GET /api/ops?case=decider|detect`(고정된 가상 입력, `synthetic: true`)에서 받은 응답이며, 실제 엔진의 기기 검증·재로그인 흐름·회수 집행은 미실행입니다.
 - 이 표는 이 저장소의 직접 점검입니다. 심판의 41종 공격 시험은 이 표로 통과 처리하지 않습니다. 41종의 결과는 심판 판정으로만 확인합니다.
 
 ### 제작 3: 설치·실행·중지·복구 안내 (검사한 커밋 기준)
@@ -369,7 +369,7 @@
 
 | 출처 | 들어 있는 것 |
 |---|---|
-| 학생이 만든 것 | 판정기 `src/decider.mjs`, 탐지 규칙 `src/detect.mjs`, 가상 판정 점검 `src/rule-check.mjs`·`api/checks/index.js`, 접속 앱·작전실 화면 `public/`(`index.html`·`ops.html`·`manifest.json`·`sw.js`·`offline.html`), 자료실 서버 함수 `api/`(메모·공지·복원·기기 승인·작전실 요약)와 `lib/`, DB 설정 `supabase/*.sql`, 정책 사본과 복원 도구 `policy/`·`scripts/policy-restore.mjs`, 메모 사본 검증 기록 `backup/`, 점검 코드 `src/attack-check.mjs`·`scripts/ops-table.mjs`, XDR 판정 `xdr/*/decide.mjs` |
+| 학생이 만든 것 | 판정기 `src/decider.mjs`, 탐지 규칙 `src/detect.mjs`, 가상 판정 점검 `src/rule-check.mjs`(`GET /api/ops?case=…`), 접속 앱·작전실 화면 `public/`(`index.html`·`ops.html`·`manifest.json`·`sw.js`·`offline.html`), 자료실 서버 함수 `api/`(메모·공지·복원·기기 승인·작전실 요약)와 `lib/`, DB 설정 `supabase/*.sql`, 정책 사본과 복원 도구 `policy/`·`scripts/policy-restore.mjs`, 메모 사본 검증 기록 `backup/`, 점검 코드 `src/attack-check.mjs`·`scripts/ops-table.mjs`, XDR 판정 `xdr/*/decide.mjs` |
 | 제공 엔진 | ALEPH SDP 엔진을 사용합니다. 로그인 세션 확인, 기기 등록 확인, 판정기 호출과 집행, 사건 전달과 접속 회수 집행, 엔진 감사 기록은 엔진이 맡습니다. 이 저장소에는 엔진 코드가 없습니다. |
 | 시작 틀(과정 제공) | 로그인 검사 `src/verify-login.mjs`, 배포 정보 `scripts/deployment-identity.mjs`·`scripts/build-public.mjs`, 제출 묶음 `scripts/bundle.mjs`(12단계에서 제작자 공개 표본의 형식에 맞춰 `runAttackChecks(배포 주소)`·`stage`·`result`·`checkedAt`을 반영), `docs/`, `package/` |
 | 외부 서비스 | Vercel(배포·서버 함수), Supabase(로그인·DB) |
@@ -378,8 +378,8 @@
 
 | 구성 요소 | 설치 | 실행·확인 | 중지 | 복구 |
 |---|---|---|---|---|
-| 판정기 | 검사한 커밋을 받고 `npm install` | `npm run decider:test`, `npm run fixture:7`, 배포의 `/api/checks?case=decider` | 엔진 쪽 경로 허용을 끔(제공 엔진에서) | 시험 정책은 `npm run policy:diff` → `npm run policy:restore -- --confirm zone-v10r2`. 운영 판정기는 `git checkout <검사한 커밋> -- src/decider.mjs` 뒤 다시 배포 |
-| 탐지 규칙 | 같음 | `npm run detect:test`, 배포의 `/api/checks?case=detect` | 엔진의 사건 전달을 끔(제공 엔진에서) | `git checkout <검사한 커밋> -- src/detect.mjs` 뒤 다시 배포 |
+| 판정기 | 검사한 커밋을 받고 `npm install` | `npm run decider:test`, `npm run fixture:7`, 배포의 `/api/ops?case=decider` | 엔진 쪽 경로 허용을 끔(제공 엔진에서) | 시험 정책은 `npm run policy:diff` → `npm run policy:restore -- --confirm zone-v10r2`. 운영 판정기는 `git checkout <검사한 커밋> -- src/decider.mjs` 뒤 다시 배포 |
+| 탐지 규칙 | 같음 | `npm run detect:test`, 배포의 `/api/ops?case=detect` | 엔진의 사건 전달을 끔(제공 엔진에서) | `git checkout <검사한 커밋> -- src/detect.mjs` 뒤 다시 배포 |
 | 접속 앱 | Vercel에 저장소를 연결해 배포(`vercel.json`, 빌드 `npm run build`) | 배포 주소 `/` 로그인 → 「이 기기 승인 요청」 → SQL Editor에서 `approve_vault_device('<요청 코드>')` → 「상태 다시 확인」. 작전실은 `/ops.html` | Vercel에서 배포를 내리거나(Instant Rollback·프로젝트 일시 중지) 기기 승인을 `revoke_vault_device('<요청 코드>')`로 취소 | Vercel에서 검사한 커밋의 배포를 다시 운영(Promote)으로 지정 |
 | 자료실 | Supabase SQL Editor에서 차례로: `notes.sql` → `03-notes-uuid.sql` → `04-owners.sql` → `04-rls.sql` → `05-revoke-direct.sql` → `08-notices.sql` → `10-backup.sql` → `10-backup-on-create.sql` → `10-policy-backup.sql` → `10-policy-restore-test.sql` → `11-devices.sql` | 로그인 뒤 메모 목록·작성·복원, `supabase/12-ops-check.sql`로 서버 기록 확인 | Vercel 배포를 내리거나 Supabase 프로젝트를 일시 중지 | 메모 한 건은 `POST /api/restore/notes/:id`(사본 검증 뒤 한 건만), RLS 시험 정책은 `notes_policy_restore('s4-rls-v1', true)` |
 
@@ -405,5 +405,6 @@
 ## 12단계 저장점
 
 - `step` 12. `allowedRoutes`·`restoreRoute`·`identityProvider`·`originalApiUrl`·`judgeIssuer`는 그대로입니다. 판정기 `RULE_IDS`도 같은 8개입니다.
-- 새 파일: `public/ops.html`, `api/ops/index.js`, `api/checks/index.js`, `src/rule-check.mjs`, `scripts/ops-table.mjs`, `supabase/12-ops-check.sql`. `package.json`에 `ops:table`을 더했습니다.
-- `src/attack-check.mjs`: 배포 주소만 받아도 실행되고, 항목마다 `stage`·`result`(`blocked`·`breached`·`not_run`)를 붙입니다. 6~9단계 가상 판정은 배포의 `/api/checks` 응답으로 받습니다. 제출 점검 20개 한도 때문에 실제 재로그인 흐름(미실행)은 복합 이상 줄에 합치고 `ops_room_summary`를 더했습니다. 심판 판정이 아닙니다.
+- 새 파일: `public/ops.html`, `api/ops/index.js`(작전실 요약 `GET /api/ops`와 가상 판정 점검 `GET /api/ops?case=decider|detect`), `src/rule-check.mjs`, `scripts/ops-table.mjs`, `supabase/12-ops-check.sql`. `package.json`에 `ops:table`을 더했습니다.
+- Vercel Hobby 요금제의 서버 함수 12개 한도에 맞추려고 기기 승인 두 경로를 한 파일 `api/device/[action].js`로 합쳤습니다(주소 `/api/device/status`·`/api/device/request`와 동작은 그대로).
+- `src/attack-check.mjs`: 배포 주소만 받아도 실행되고, 항목마다 `stage`·`result`(`blocked`·`breached`·`not_run`)를 붙입니다. 6~9단계 가상 판정은 배포의 `/api/ops?case=…` 응답으로 받습니다. 제출 점검 20개 한도 때문에 실제 재로그인 흐름(미실행)은 복합 이상 줄에 합치고 `ops_room_summary`를 더했습니다. 심판 판정이 아닙니다.

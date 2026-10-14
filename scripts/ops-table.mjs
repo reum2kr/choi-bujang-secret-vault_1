@@ -17,7 +17,7 @@ const KIND = {
   detect_doppelganger_burst: '금지', restore_anonymous: '금지', policy_snapshot_verified: '정상·금지', restore_b_deleted_note: '정상·금지',
   restore_b_tampered_note: '정상·금지', post_restore_retest: '정상·금지', device_approval_gate: '정상·금지', ops_room_summary: '정상',
 };
-// 한 번의 HTTP 응답을 여러 점검이 함께 쓰는 경우(서버 /api/checks, B 로그인 재시험)
+// 한 번의 HTTP 응답을 여러 점검이 함께 쓰는 경우(서버 /api/ops?case=…, B 로그인 재시험)
 const SOURCE_CASE = {
   unregistered_device_read: 'registered_device_read', anomalous_context_read: 'registered_device_read',
   zone_decider_rules: 'registered_device_read', detect_doppelganger_burst: 'detect_normal_device',

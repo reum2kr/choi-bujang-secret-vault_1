@@ -220,12 +220,12 @@ async function zoneChecks(app, { compact = false, crossObserved = null } = {}) {
   ];
 }
 
-// 12단계: 판정기·탐지 규칙의 가상 입력 결과를 배포의 GET /api/checks?case=… 응답으로 받아 적습니다(실행기가 같은 응답을 관측).
+// 12단계: 판정기·탐지 규칙의 가상 입력 결과를 배포의 GET /api/ops?case=… 응답으로 받아 적습니다(실행기가 같은 응답을 관측).
 // 응답을 받지 못하면 결과를 짐작하지 않고 미실행으로 남깁니다. 실제 엔진의 기기 검증·재로그인·회수 집행은 미실행입니다.
 async function httpRuleChecks(app, { crossObserved = null } = {}) {
   const get = async (caseId, name) => {
     caseOf(caseId);
-    const r = await authed(app, 'GET', `/api/checks?case=${name}`, null);
+    const r = await authed(app, 'GET', `/api/ops?case=${name}`, null);
     return r.status === 200 && r.data?.synthetic === true ? r.data.results : null;
   };
   const d = await get('registered_device_read', 'decider');
@@ -235,7 +235,7 @@ async function httpRuleChecks(app, { crossObserved = null } = {}) {
   const act = (o) => (o ? (o.action === 'observe' ? 'observe' : `${o.action} · ${o.reasonCode} · 대상 ${o.subject}${o.deviceId ? `/${o.deviceId}` : ''}`) : FAILED);
   caseOf('anonymous_notice_read');
   const notices = await anonymousGet(app, '/api/notices');
-  const via = '서버 /api/checks 가상 판정';
+  const via = '서버 /api/ops?case 가상 판정';
   return {
     device: [
       { attackId: 'registered_device_read', expected: '등록 기기의 내 자료실 읽기(GET /notes/:id)는 allow',
@@ -261,10 +261,10 @@ async function httpRuleChecks(app, { crossObserved = null } = {}) {
     detect: [
       { attackId: 'detect_normal_device',
         expected: '평소 네트워크의 정상 기기 다량 조회, 지역만 다른 조회, 처음 보는 네트워크의 적은 조회(20건)는 모두 observe',
-        observed: `서버 /api/checks 가상 사건 탐지 정상 기기 200건 ${act(t?.normal200)} / 지역만 다름 200건 ${act(t?.regionOnly200)} / 처음 보는 네트워크 20건 ${act(t?.unusual20)}` },
+        observed: `서버 /api/ops?case 가상 사건 탐지 정상 기기 200건 ${act(t?.normal200)} / 지역만 다름 200건 ${act(t?.regionOnly200)} / 처음 보는 네트워크 20건 ${act(t?.unusual20)}` },
       { attackId: 'detect_doppelganger_burst',
         expected: '다른 기기가 10분 안에 120건 넘게 조회하면 그 기기만 propose_revocation · burst_read. 엔진의 실제 회수 집행은 별도',
-        observed: `서버 /api/checks 가상 사건 정상 기기 50건 + 다른 기기 150건 탐지 ${act(t?.doppelganger)} / 실제 회수 집행: 미실행(엔진 경로 없음)` },
+        observed: `서버 /api/ops?case 가상 사건 정상 기기 50건 + 다른 기기 150건 탐지 ${act(t?.doppelganger)} / 실제 회수 집행: 미실행(엔진 경로 없음)` },
     ],
   };
 }
