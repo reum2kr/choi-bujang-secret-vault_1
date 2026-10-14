@@ -1,0 +1,106 @@
+{
+  "schema": "aleph.xdr.deny-rules.v1",
+  "moduleKey": "persistence",
+  "generatedAt": "2026-10-14T06:01:12.126Z",
+  "rules": [
+    {
+      "ruleId": "xdr.persistence.isolate_source.203_0_113_12",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.12"
+      },
+      "createdAt": "2026-10-14T06:01:12.126Z",
+      "expiresAt": "2026-10-14T07:01:12.126Z",
+      "alertIds": [
+        "ps-01",
+        "ps-02"
+      ],
+      "confidence": 1,
+      "reason": "unsigned_new_service + persistence_from_temp_path (T1543·T1053)"
+    },
+    {
+      "ruleId": "xdr.persistence.isolate_source.198_51_100_12",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.12"
+      },
+      "createdAt": "2026-10-14T06:01:12.126Z",
+      "expiresAt": "2026-10-14T07:01:12.126Z",
+      "alertIds": [
+        "ps-03"
+      ],
+      "confidence": 0.95,
+      "reason": "startup_folder_change + not_in_baseline_repeated (T1543·T1053)"
+    },
+    {
+      "ruleId": "xdr.persistence.isolate_source.192_0_2_12",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.12"
+      },
+      "createdAt": "2026-10-14T06:01:12.126Z",
+      "expiresAt": "2026-10-14T07:01:12.126Z",
+      "alertIds": [
+        "ps-04"
+      ],
+      "confidence": 0.95,
+      "reason": "unsigned_new_service + not_in_baseline_repeated (T1543·T1053)"
+    },
+    {
+      "ruleId": "xdr.persistence.isolate_source.203_0_113_19",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.19"
+      },
+      "createdAt": "2026-10-14T06:01:12.126Z",
+      "expiresAt": "2026-10-14T07:01:12.126Z",
+      "alertIds": [
+        "ps-05"
+      ],
+      "confidence": 1,
+      "reason": "unfamiliar_scheduled_task + persistence_from_temp_path + not_in_baseline_repeated (T1543·T1053)"
+    },
+    {
+      "ruleId": "xdr.persistence.isolate_source.198_51_100_19",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.19"
+      },
+      "createdAt": "2026-10-14T06:01:12.126Z",
+      "expiresAt": "2026-10-14T07:01:12.126Z",
+      "alertIds": [
+        "ps-06"
+      ],
+      "confidence": 0.95,
+      "reason": "unsigned_new_service + persistence_from_temp_path (T1543·T1053)"
+    },
+    {
+      "ruleId": "xdr.persistence.isolate_source.192_0_2_19",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.19"
+      },
+      "createdAt": "2026-10-14T06:01:12.126Z",
+      "expiresAt": "2026-10-14T07:01:12.126Z",
+      "alertIds": [
+        "ps-07"
+      ],
+      "confidence": 1,
+      "reason": "unfamiliar_scheduled_task + persistence_from_temp_path + not_in_baseline_repeated (T1543·T1053)"
+    },
+    {
+      "ruleId": "xdr.persistence.isolate_source.203_0_113_33",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.33"
+      },
+      "createdAt": "2026-10-14T06:01:12.126Z",
+      "expiresAt": "2026-10-14T07:01:12.126Z",
+      "alertIds": [
+        "ps-08"
+      ],
+      "confidence": 0.95,
+      "reason": "persistence_from_temp_path + not_in_baseline_repeated (T1543·T1053)"
+    }
+  ]
+}

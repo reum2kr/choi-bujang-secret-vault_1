@@ -50,3 +50,19 @@
 2026-10-14T05:50:27.090Z ALERT known-cve kc-14 src=203.0.113.46 path=/search conf=0.61 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
 2026-10-14T05:50:27.090Z ALERT known-cve kc-15 src=192.0.2.47 path=/search conf=0.58 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
 2026-10-14T05:50:27.090Z ALERT known-cve kc-16 src=198.51.100.47 path=/search conf=0.67 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-01 src=203.0.113.12 conf=0.95 unsigned_new_service + persistence_from_temp_path (T1543·T1053)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-02 src=203.0.113.12 conf=1 unfamiliar_scheduled_task + persistence_from_temp_path + not_in_baseline_repeated (T1543·T1053)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-03 src=198.51.100.12 conf=0.95 startup_folder_change + not_in_baseline_repeated (T1543·T1053)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-04 src=192.0.2.12 conf=0.95 unsigned_new_service + not_in_baseline_repeated (T1543·T1053)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-05 src=203.0.113.19 conf=1 unfamiliar_scheduled_task + persistence_from_temp_path + not_in_baseline_repeated (T1543·T1053)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-06 src=198.51.100.19 conf=0.95 unsigned_new_service + persistence_from_temp_path (T1543·T1053)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-07 src=192.0.2.19 conf=1 unfamiliar_scheduled_task + persistence_from_temp_path + not_in_baseline_repeated (T1543·T1053)
+2026-10-14T06:01:12.126Z BLOCK persistence ps-08 src=203.0.113.33 conf=0.95 persistence_from_temp_path + not_in_baseline_repeated (T1543·T1053)
+2026-10-14T06:01:12.126Z ALERT persistence ps-09 src=192.0.2.48 conf=0.6 unfamiliar_scheduled_task 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:01:12.126Z ALERT persistence ps-10 src=198.51.100.48 conf=0.64 startup_folder_change 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:01:12.126Z ALERT persistence ps-11 src=203.0.113.48 conf=0.56 unsigned_new_service 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:01:12.126Z ALERT persistence ps-12 src=192.0.2.49 conf=0.6 unfamiliar_scheduled_task 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:01:12.126Z ALERT persistence ps-13 src=198.51.100.49 conf=0.73 persistence_from_temp_path 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:01:12.126Z ALERT persistence ps-14 src=203.0.113.49 conf=0.6 startup_folder_change 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:01:12.126Z ALERT persistence ps-15 src=192.0.2.53 conf=0.64 unfamiliar_scheduled_task 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:01:12.126Z ALERT persistence ps-16 src=198.51.100.53 conf=0.56 unsigned_new_service 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
