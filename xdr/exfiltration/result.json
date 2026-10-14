@@ -1,0 +1,191 @@
+{
+  "schema": "aleph.xdr.result.v1",
+  "moduleKey": "exfiltration",
+  "decisions": [
+    {
+      "alertId": "ex-01",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "bulk_transfer_new_destination (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-02",
+      "action": "block",
+      "confidence": 0.97,
+      "reason": "bulk_transfer_new_destination + off_hours_archive_exfil (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-03",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "repeated_transfer_same_destination (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-04",
+      "action": "block",
+      "confidence": 1,
+      "reason": "bulk_transfer_new_destination + repeated_transfer_same_destination + c2_channel_or_unusual_port (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-05",
+      "action": "block",
+      "confidence": 0.93,
+      "reason": "bulk_transfer_new_destination (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-06",
+      "action": "block",
+      "confidence": 0.99,
+      "reason": "off_hours_archive_exfil + repeated_transfer_same_destination (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-07",
+      "action": "block",
+      "confidence": 1,
+      "reason": "bulk_transfer_new_destination + off_hours_archive_exfil + repeated_transfer_same_destination (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-08",
+      "action": "block",
+      "confidence": 0.95,
+      "reason": "bulk_transfer_new_destination (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-09",
+      "action": "block",
+      "confidence": 1,
+      "reason": "bulk_transfer_new_destination + repeated_transfer_same_destination + c2_channel_or_unusual_port (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-10",
+      "action": "block",
+      "confidence": 0.97,
+      "reason": "bulk_transfer_new_destination + off_hours_archive_exfil (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-11",
+      "action": "alert",
+      "confidence": 0.67,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-12",
+      "action": "alert",
+      "confidence": 0.67,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-13",
+      "action": "alert",
+      "confidence": 0.59,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-14",
+      "action": "alert",
+      "confidence": 0.64,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-15",
+      "action": "alert",
+      "confidence": 0.71,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-16",
+      "action": "alert",
+      "confidence": 0.63,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-17",
+      "action": "alert",
+      "confidence": 0.67,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-18",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-19",
+      "action": "alert",
+      "confidence": 0.6,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-20",
+      "action": "alert",
+      "confidence": 0.67,
+      "reason": "transfer_anomaly_unconfirmed: 크기·횟수·목적지 신호가 약해 알림만 (T1041·T1048)"
+    },
+    {
+      "alertId": "ex-21",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-22",
+      "action": "record",
+      "confidence": 0.09,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-23",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-24",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-25",
+      "action": "record",
+      "confidence": 0.09,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-26",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-27",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-28",
+      "action": "record",
+      "confidence": 0.09,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-29",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    },
+    {
+      "alertId": "ex-30",
+      "action": "record",
+      "confidence": 0.11,
+      "reason": "none: 평소 목적지로 가는 작은 전송이나 읽기 기록"
+    }
+  ],
+  "counts": {
+    "block": 10,
+    "alert": 10,
+    "record": 10
+  }
+}

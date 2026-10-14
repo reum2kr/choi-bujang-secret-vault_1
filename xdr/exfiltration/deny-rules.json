@@ -1,0 +1,121 @@
+{
+  "schema": "aleph.xdr.deny-rules.v1",
+  "moduleKey": "exfiltration",
+  "generatedAt": "2026-10-14T06:15:48.294Z",
+  "rules": [
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.203_0_113_50",
+      "decision": "deny",
+      "match": {
+        "dstip": "203.0.113.50"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-01",
+        "ex-03"
+      ],
+      "confidence": 0.95,
+      "reason": "bulk_transfer_new_destination (T1041·T1048)"
+    },
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.198_51_100_40",
+      "decision": "deny",
+      "match": {
+        "dstip": "198.51.100.40"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-02",
+        "ex-04"
+      ],
+      "confidence": 1,
+      "reason": "bulk_transfer_new_destination + off_hours_archive_exfil (T1041·T1048)"
+    },
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.203_0_113_55",
+      "decision": "deny",
+      "match": {
+        "dstip": "203.0.113.55"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-05"
+      ],
+      "confidence": 0.93,
+      "reason": "bulk_transfer_new_destination (T1041·T1048)"
+    },
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.192_0_2_90",
+      "decision": "deny",
+      "match": {
+        "dstip": "192.0.2.90"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-06"
+      ],
+      "confidence": 0.99,
+      "reason": "off_hours_archive_exfil + repeated_transfer_same_destination (T1041·T1048)"
+    },
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.198_51_100_45",
+      "decision": "deny",
+      "match": {
+        "dstip": "198.51.100.45"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-07"
+      ],
+      "confidence": 1,
+      "reason": "bulk_transfer_new_destination + off_hours_archive_exfil + repeated_transfer_same_destination (T1041·T1048)"
+    },
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.203_0_113_60",
+      "decision": "deny",
+      "match": {
+        "dstip": "203.0.113.60"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-08"
+      ],
+      "confidence": 0.95,
+      "reason": "bulk_transfer_new_destination (T1041·T1048)"
+    },
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.203_0_113_61",
+      "decision": "deny",
+      "match": {
+        "dstip": "203.0.113.61"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-09"
+      ],
+      "confidence": 1,
+      "reason": "bulk_transfer_new_destination + repeated_transfer_same_destination + c2_channel_or_unusual_port (T1041·T1048)"
+    },
+    {
+      "ruleId": "xdr.exfiltration.deny_destination.198_51_100_46",
+      "decision": "deny",
+      "match": {
+        "dstip": "198.51.100.46"
+      },
+      "createdAt": "2026-10-14T06:15:48.294Z",
+      "expiresAt": "2026-10-14T07:15:48.294Z",
+      "alertIds": [
+        "ex-10"
+      ],
+      "confidence": 0.97,
+      "reason": "bulk_transfer_new_destination + off_hours_archive_exfil (T1041·T1048)"
+    }
+  ]
+}

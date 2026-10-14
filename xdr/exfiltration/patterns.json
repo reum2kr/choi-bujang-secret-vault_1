@@ -1,0 +1,37 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "exfiltration",
+  "technique": "MITRE ATT&CK T1041 Exfiltration Over C2 Channel, T1048 Exfiltration Over Alternative Protocol",
+  "patterns": [
+    {
+      "name": "bulk_transfer_new_destination",
+      "technique": "T1048",
+      "condition": "처음 보는(평소와 다른) 외부 목적지로 대용량(50MB 이상) 또는 많은 파일(50건 이상, 자료실 전체)이 한꺼번에 나감",
+      "evidence": "MITRE ATT&CK T1048: 공격자는 평소 업무에 쓰지 않는 목적지·프로토콜로 모은 자료를 한 번에 내보내며, 낯선 목적지로 가는 대용량 전송은 대표적인 유출 흔적이다."
+    },
+    {
+      "name": "off_hours_archive_exfil",
+      "technique": "T1048",
+      "condition": "업무·수업 시간 밖에 대용량 전송이 일어나거나, 압축 파일이 처음 보는 주소로 올라감",
+      "evidence": "MITRE ATT&CK T1048·T1560: 공격자는 자료를 압축해 묶은 뒤 감시가 적은 시간에 외부로 옮긴다."
+    },
+    {
+      "name": "repeated_transfer_same_destination",
+      "technique": "T1041",
+      "condition": "같은 목적지로 대용량 전송이 5번 이상 반복되거나 연속으로 이어짐",
+      "evidence": "MITRE ATT&CK T1041·T1030: 공격자는 탐지를 피하려고 자료를 나눠 같은 목적지로 여러 번 보낸다."
+    },
+    {
+      "name": "c2_channel_or_unusual_port",
+      "technique": "T1041",
+      "condition": "명령 통로나 평소에 쓰지 않던 포트로 큰 파일·자료 이름이 전송됨",
+      "evidence": "MITRE ATT&CK T1041: 공격자는 이미 열어 둔 명령·제어 통로에 자료를 실어 내보내고, T1048 처럼 평소와 다른 포트·프로토콜을 쓰기도 한다."
+    },
+    {
+      "name": "transfer_anomaly_unconfirmed",
+      "technique": "T1048",
+      "condition": "낯선 주소·평소보다 큰 전송·압축 파일 같은 신호가 하나 있지만, 크기가 작거나 한 번뿐이거나 실패·아직 전송 없음·평소 목적지라 유출이 확인되지 않음",
+      "evidence": "MITRE ATT&CK T1041·T1048: 백업·수업 자료 동기화 같은 정상 전송과 겹치는 약한 신호는 알림만 하고 목적지를 막지 않는다."
+    }
+  ]
+}
