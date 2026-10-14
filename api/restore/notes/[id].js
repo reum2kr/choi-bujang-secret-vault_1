@@ -110,7 +110,6 @@ export default async function handler(request, response) {
       id: noteId, result: preview ? 'preview' : 'confirm_mismatch', backupLabel: label, verified: true,
       backedUpAt: copy.backed_up_at ?? null,
       contentSha256: entry.content_sha256,
-      backupOwnerSha256: entry.owner_sha256,
       currentSha256: current ? contentSha256(current.title, current.body) : null,
       changes,
       ...policySummary,
@@ -157,7 +156,6 @@ export default async function handler(request, response) {
     id: noteId, result, backupLabel: label,
     idMatches: true, ownerMatches: true, contentHashMatches: true, ...policySummary,
     contentSha256: entry.content_sha256,
-    backupOwnerSha256: entry.owner_sha256,
     // 다시 읽은 복원 행의 값(소유자는 지문만). 호출한 쪽이 침해 전 기록과 직접 비교할 수 있습니다.
     restored: { id: after.id, ownerSha256: ownerSha256(after.owner_id), contentSha256: contentSha256(after.title, after.body) },
     audited,
