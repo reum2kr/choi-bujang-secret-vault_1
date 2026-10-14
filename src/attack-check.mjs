@@ -20,18 +20,43 @@ const FAILED = '요청 실패';
 let currentCase = 'setup';
 let requestSeq = 0;
 const caseOf = (attackId) => { currentCase = attackId; };
+// 12단계: 보낸 요청마다 점검 이름·요청(메서드·경로)·응답 상태·요청 ID(배포가 돌려준 x-vercel-id)·확인 시각을 남깁니다.
+// 요청 본문·토큰·쿠키·쿼리 값은 남기지 않습니다. npm run ops:table 이 이 기록으로 한 표를 만듭니다.
+const requestLog = [];
+export function getRequestLog() { return requestLog.map((r) => ({ ...r })); }
 async function net(url, options = {}) {
   requestSeq += 1;
+  const requestKey = `${currentCase}#${requestSeq}`;
+  const target = new URL(url);
+  const entry = { caseId: currentCase, requestKey, method: options.method ?? 'GET', host: target.host, path: target.pathname,
+    at: new Date().toISOString(), status: FAILED, requestId: null };
+  requestLog.push(entry);
   try {
-    return await fetch(url, { ...options, alephEvidence: { caseId: currentCase, requestKey: `${currentCase}#${requestSeq}` } });
+    const response = await fetch(url, { ...options, alephEvidence: { caseId: currentCase, requestKey } });
+    entry.status = response.status;
+    entry.requestId = response.headers?.get?.('x-vercel-id') ?? response.headers?.get?.('x-request-id') ?? null;
+    return response;
   } catch {
     return { status: FAILED, ok: false, json: async () => { throw new Error('no_response'); }, text: async () => '', headers: { getSetCookie: () => [] } };
   }
 }
 // 보내지 못한 요청이 섞인 점검은 결과를 추측하지 않고 미실행으로 남깁니다.
+const STAGE_OF = {
+  anonymous_api_read: 3, forged_token_read: 3, cross_user_note_read: 4, anon_original_api_read: 5, browser_key_exposure: 5,
+  registered_device_read: 6, unregistered_device_read: 6, anomalous_context_read: 7, real_step_up_block: 7,
+  zone_decider_rules: 8, anonymous_notice_read: 8, zone_api_cross_owner: 8,
+  detect_normal_device: 9, detect_doppelganger_burst: 9, live_revocation: 9,
+  restore_anonymous: 10, policy_snapshot_verified: 10, restore_b_deleted_note: 10, restore_b_tampered_note: 10, post_restore_retest: 10,
+  device_approval_gate: 11, ops_room_summary: 12,
+};
+// result: 결과를 관측하지 못했으면 not_run, 기대와 다른 관측이 있으면 breached, 그 밖은 blocked(기대대로 막거나 허용함).
+const BREACH = /거부되지 않음|노출됨|발견됨|(?:ID|사본) \S+ 다름|바뀜|approved=true|뚫림|캐시 대상 확인 필요|검증 실패로 중단/u;
 function finalize(list) {
-  return list.map((a) => (String(a.observed).includes(FAILED)
-    ? { ...a, observed: '미실행: 배포에 요청을 보내지 못해(네트워크 오류) 결과 없음' } : a));
+  return list.map((a) => {
+    const observed = String(a.observed).includes(FAILED) ? '미실행: 배포에 요청을 보내지 못해(네트워크 오류) 결과 없음' : a.observed;
+    const result = observed.startsWith('미실행') ? 'not_run' : BREACH.test(observed) ? 'breached' : 'blocked';
+    return { attackId: a.attackId, stage: STAGE_OF[a.attackId] ?? 0, expected: a.expected, observed, result };
+  });
 }
 
 async function anonymousGet(app, path, headers = {}, method = 'GET') {
@@ -193,6 +218,68 @@ async function zoneChecks(app, { compact = false, crossObserved = null } = {}) {
     noticeLine,
     crossLine,
   ];
+}
+
+// 12단계: 판정기·탐지 규칙의 가상 입력 결과를 배포의 GET /api/ops?case=… 응답으로 받아 적습니다(실행기가 같은 응답을 관측).
+// 응답을 받지 못하면 결과를 짐작하지 않고 미실행으로 남깁니다. 실제 엔진의 기기 검증·재로그인·회수 집행은 미실행입니다.
+async function httpRuleChecks(app, { crossObserved = null } = {}) {
+  const get = async (caseId, name) => {
+    caseOf(caseId);
+    const r = await authed(app, 'GET', `/api/ops?case=${name}`, null);
+    return r.status === 200 && r.data?.synthetic === true ? r.data.results : null;
+  };
+  const d = await get('registered_device_read', 'decider');
+  const t = await get('detect_normal_device', 'detect');
+  const said = (o) => (o ? `${o.decision} · ${o.reasonCode} · ${o.ruleIds.join(',')}` : FAILED);
+  const short = (o) => (o ? `${o.decision}(${o.reasonCode})` : FAILED);
+  const act = (o) => (o ? (o.action === 'observe' ? 'observe' : `${o.action} · ${o.reasonCode} · 대상 ${o.subject}${o.deviceId ? `/${o.deviceId}` : ''}`) : FAILED);
+  caseOf('anonymous_notice_read');
+  const notices = await anonymousGet(app, '/api/notices');
+  const via = '서버 /api/ops?case 가상 판정';
+  return {
+    device: [
+      { attackId: 'registered_device_read', expected: '등록 기기의 내 자료실 읽기(GET /notes/:id)는 allow',
+        observed: `${via} ${said(d?.registered)}` },
+      { attackId: 'unregistered_device_read', expected: '미등록 기기의 같은 요청은 deny · device_not_registered. 실제 엔진의 기기 검증은 별도',
+        observed: `${via} ${said(d?.unregistered)} / 실제 엔진 기기 검증: 미실행` },
+    ],
+    stepUp: [
+      { attackId: 'anomalous_context_read',
+        expected: '정상 allow · 새벽+처음 보는 네트워크+대량 읽기 step_up · 재로그인 뒤 allow · 클라이언트 헤더 출처 미적용. 엔진의 실제 재로그인 흐름은 별도',
+        observed: `${via} 정상 ${short(d?.normalContext)} / 복합 ${short(d?.compound)} / 재로그인 뒤 ${short(d?.afterStepUp)} / client_header ${short(d?.clientHeader)} / 실제 재로그인 흐름: 미실행(엔진 경로 없음)` },
+    ],
+    zone: [
+      { attackId: 'zone_decider_rules',
+        expected: '자기 메모 한 건 allow · 복구는 검증 정책 버전(1)만 allow, 바뀐 버전 deny(policy_unverified) · 전체 목록·공지·export·경로표 밖 deny',
+        observed: `${via} 자기 메모 ${short(d?.ownNote)} / 복구 버전1 ${short(d?.restoreV1)} / 복구 버전2 ${short(d?.restoreV2)} / 전체 목록 ${short(d?.bulkList)} / 공지 수정 ${short(d?.noticeWrite)} / 공지 읽기 ${short(d?.noticeRead)} / export ${short(d?.exportPath)} / GET /admin ${short(d?.unknownRoute)}` },
+      { attackId: 'anonymous_notice_read', expected: '로그인 없는 /api/notices 요청은 401·403 JSON 오류로 거부',
+        observed: `비로그인 /api/notices 요청 결과 HTTP ${notices.status}${notices.error ? ` ${notices.error}` : ''}${notices.notes === null ? ', 자료 없음' : `, ${notices.notes}건`}` },
+      { attackId: 'zone_api_cross_owner',
+        expected: '메뉴를 우회한 직접 API 요청: B의 A 메모 GET·PUT은 404, 학생의 공지 GET·PUT은 403',
+        observed: crossObserved ?? '미실행: B·A 계정 비밀값이 없어 로그인 요청을 보내지 않음' },
+    ],
+    detect: [
+      { attackId: 'detect_normal_device',
+        expected: '평소 네트워크의 정상 기기 다량 조회, 지역만 다른 조회, 처음 보는 네트워크의 적은 조회(20건)는 모두 observe',
+        observed: `서버 /api/ops?case 가상 사건 탐지 정상 기기 200건 ${act(t?.normal200)} / 지역만 다름 200건 ${act(t?.regionOnly200)} / 처음 보는 네트워크 20건 ${act(t?.unusual20)}` },
+      { attackId: 'detect_doppelganger_burst',
+        expected: '다른 기기가 10분 안에 120건 넘게 조회하면 그 기기만 propose_revocation · burst_read. 엔진의 실제 회수 집행은 별도',
+        observed: `서버 /api/ops?case 가상 사건 정상 기기 50건 + 다른 기기 150건 탐지 ${act(t?.doppelganger)} / 실제 회수 집행: 미실행(엔진 경로 없음)` },
+    ],
+  };
+}
+
+// 12단계: 탈환 작전실 서버 요약(GET /api/ops)을 받아, 메모 본문 없이 요약 항목이 모두 있는지만 적습니다.
+async function opsRoomCheck(app) {
+  caseOf('ops_room_summary');
+  const r = await authed(app, 'GET', '/api/ops', null);
+  const o = r.data;
+  const text = JSON.stringify(o ?? {});
+  const leak = /"(title|body|content|owner_id|email|accessToken)"/u.test(text);
+  const part = (k) => (o?.[k] ? `${k} ${o[k].source}` : `${k} 없음`);
+  return [{ attackId: 'ops_room_summary',
+    expected: '작전실 서버 요약에 판정기 규칙·탐지 사건·회수 상태·복구 버전이 출처(서버 기록·가상·미실행)와 함께 있고 메모 본문은 없음',
+    observed: `작전실 /api/ops HTTP ${r.status} · ${['rules', 'detection', 'revocation', 'restore'].map(part).join(' · ')} · 메모 본문·사용자 정보 ${leak ? '발견됨' : '없음'}` }];
 }
 
 // 10단계: 실제로 보낸 요청과 실제로 실행한 검증의 결과만 적습니다.
@@ -485,7 +572,13 @@ async function deviceGateChecks(app) {
     observed: `manifest ${manifest.status} 이름 ${manifest.data?.name ?? '-'} · sw.js ${sw.status} ${swOnlyOffline ? '오프라인 안내만 캐시' : '캐시 대상 확인 필요'} · 비로그인 기기 상태 ${anon.status} / ${bPart}` }];
 }
 
-export async function runAttackChecks(config) {
+// 실행기는 runAttackChecks(publicAppUrl)처럼 배포 주소만 넘길 수 있고, npm run bundle 예전 방식은 설정 전체를 넘깁니다. 둘 다 받습니다.
+export async function runAttackChecks(input) {
+  let config = input;
+  if (typeof input === 'string') {
+    const { default: saved } = await import('../aleph.config.json', { with: { type: 'json' } });
+    config = { ...saved, publicAppUrl: input };
+  }
   const app = appUrl(config);
   if (typeof config.sampleMarker !== 'string' || !config.sampleMarker) throw new Error('가상 메모의 확인 표시를 넣어 주세요.');
 
@@ -581,7 +674,7 @@ export async function runAttackChecks(config) {
     ];
   }
 
-  if (config.step >= 5 && config.step <= 11) {
+  if (config.step >= 5 && config.step <= 12) {
     // 실제로 보낸 요청의 결과만 적습니다. 메모 본문·토큰·이메일은 기록하지 않습니다.
     if (typeof config.originalApiUrl !== 'string' || !config.originalApiUrl.startsWith('https://')) {
       throw new Error('aleph.config.json의 originalApiUrl을 먼저 넣어 주세요.');
@@ -605,6 +698,7 @@ export async function runAttackChecks(config) {
     const denied = (r) => (r.status === 401 || r.status === 403) && r.notes === null;
     const describe = (r) => `HTTP ${r.status}${r.error ? ` ${r.error}` : ''}${r.notes === null ? ', 메모 없음' : `, 메모 ${r.notes}건`}`;
     const directBlocked = direct.rows === null || direct.rows === 0;
+    const rules = config.step >= 12 ? await httpRuleChecks(app, { crossObserved: restored?.crossZone }) : null;
     return finalize([
       ...(restored ? restored.first : []),
       { attackId: 'anonymous_api_read',
@@ -622,12 +716,13 @@ export async function runAttackChecks(config) {
       { attackId: 'cross_user_note_read',
         expected: 'B 로그인으로 A 메모 id를 GET·PUT·DELETE하면 404로 거부되고 A 메모는 그대로',
         observed: restored?.cross ?? '미실행: 계정 비밀번호를 코드에 넣지 않아 이 스크립트로는 보내지 않음. 학생이 B 창에서 A 메모가 안 보이는 것을 직접 확인' },
-      ...(config.step >= 6 ? await deviceChecks() : []),
-      ...(config.step >= 7 ? await stepUpChecks({ compact: config.step >= 9 }) : []),
-      ...(config.step >= 8 ? await zoneChecks(app, { compact: config.step >= 10, crossObserved: restored?.crossZone }) : []),
-      ...(config.step >= 9 ? await detectChecks({ compact: config.step >= 11 }) : []),
+      ...(rules ? rules.device : config.step >= 6 ? await deviceChecks() : []),
+      ...(rules ? rules.stepUp : config.step >= 7 ? await stepUpChecks({ compact: config.step >= 9 }) : []),
+      ...(rules ? rules.zone : config.step >= 8 ? await zoneChecks(app, { compact: config.step >= 10, crossObserved: restored?.crossZone }) : []),
+      ...(rules ? rules.detect : config.step >= 9 ? await detectChecks({ compact: config.step >= 11 }) : []),
       ...(restored ? restored.last : []),
       ...(config.step >= 11 ? await deviceGateChecks(app) : []),
+      ...(config.step >= 12 ? await opsRoomCheck(app) : []),
     ]);
   }
 
