@@ -415,7 +415,7 @@ async function restoreChecks(app, config) {
 
 // 9단계: 학생 탐지 함수(src/detect.mjs)에 가상 조회 사건을 넣어 본 결과만 적습니다.
 // 실제 반 엔진의 사건 전달·접속 회수는 이 저장소에서 보낼 수 없으므로 미실행으로 남깁니다.
-async function detectChecks() {
+async function detectChecks({ compact = false } = {}) {
   const { detect } = await import('./detect.mjs');
   const start = Date.UTC(2026, 9, 1, 2, 0, 0);
   const reads = (count, deviceId, network) => Array.from({ length: count }, (_, i) => ({
@@ -429,6 +429,18 @@ async function detectChecks() {
   const regionOnly = detect(reads(200, 'device_home', 'usual').map((e) => ({ ...e, signals: { ...e.signals, region: 'US-CA' } })));
   const fewUnusual = detect(reads(20, 'device_other', 'unusual'));
   const doppel = detect(mix(reads(50, 'device_home', 'usual'), reads(150, 'device_other', 'unusual')));
+  const liveLine = '미실행: 이 저장소에는 엔진의 사건 전달·회수 집행 경로가 없음. 실제 회수와 시간은 심판이 확인';
+  if (compact) {
+    // 11단계부터는 제출 점검 20개 한도 때문에 실제 회수 집행(미실행) 줄을 도플갱어 탐지 줄에 합쳐 적습니다.
+    return [
+      { attackId: 'detect_normal_device',
+        expected: '평소 네트워크의 정상 기기 다량 조회, 지역만 다른 조회, 처음 보는 네트워크의 적은 조회(20건)는 모두 observe(회수 제안 없음)',
+        observed: `가상 사건 탐지 결과 정상 기기 200건 ${said(normal)} / 지역만 다름 200건 ${said(regionOnly)} / 처음 보는 네트워크 20건 ${said(fewUnusual)}` },
+      { attackId: 'detect_doppelganger_burst',
+        expected: '다른 기기가 10분 안에 120건 넘게 조회하면 그 기기만 propose_revocation · burst_read. 엔진의 실제 회수 집행은 별도',
+        observed: `정상 기기 50건 + 다른 기기 150건 탐지 결과 ${said(doppel)} / 실제 회수 집행: ${liveLine}` },
+    ];
+  }
   return [
     { attackId: 'detect_normal_device',
       expected: '평소 네트워크의 정상 기기 다량 조회, 지역만 다른 조회, 처음 보는 네트워크의 적은 조회(20건)는 모두 observe(회수 제안 없음)',
@@ -438,8 +450,39 @@ async function detectChecks() {
       observed: `정상 기기 50건 + 다른 기기 150건 탐지 결과 ${said(doppel)}` },
     { attackId: 'live_revocation',
       expected: '반 엔진이 회수 제안을 집행해 의심 기기 접속이 끊기고 걸린 시간이 측정됨',
-      observed: '미실행: 이 저장소에는 엔진의 사건 전달·회수 집행 경로가 없음. 실제 회수와 시간은 심판이 확인' },
+      observed: liveLine },
   ];
+}
+
+// 11단계: 접속 앱(manifest·서비스 워커)과 기기 승인 게이트. 실제로 보낸 요청의 결과만 적습니다.
+// B 부분은 Codespaces 비밀값(ALEPH_B_EMAIL·ALEPH_B_PASSWORD)이 있을 때만 보내며, 이 점검은 기기를 승인하지 않습니다.
+async function deviceGateChecks(app) {
+  caseOf('device_approval_gate');
+  const manifest = await authed(app, 'GET', '/manifest.json', null);
+  const sw = await net(new URL('/sw.js', app), { redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(10000) });
+  const swText = sw.ok ? await sw.text() : '';
+  const swOnlyOffline = /OFFLINE_URL = '\/offline\.html'/u.test(swText) && !/cache\.(put|addAll)/u.test(swText);
+  const anon = await anonymousGet(app, '/api/device/status');
+  let bPart = '미실행: Codespaces 비밀값 ALEPH_B_EMAIL·ALEPH_B_PASSWORD가 없어 B 로그인 요청을 보내지 않음';
+  const B = { email: process.env.ALEPH_B_EMAIL, password: process.env.ALEPH_B_PASSWORD };
+  if (B.email && B.password) {
+    const b = await login(app, B.email, B.password);
+    if (!b.token) {
+      bPart = `미실행: B 로그인 실패 HTTP ${b.status}`;
+    } else {
+      const fresh = await authed(app, 'GET', '/api/device/status', b.token);
+      const forged = await authed(app, 'POST', '/api/device/request', b.token, { body: { approved: true } });
+      const asked = await authed(app, 'POST', '/api/device/request', b.token);
+      const cookie = asked.cookies.map((c) => c.split(';')[0]).join('; ');
+      const after = await authed(app, 'GET', '/api/device/status', b.token, { headers: cookie ? { Cookie: cookie } : {} });
+      const st = (r) => `${r.status} ${r.data?.state ?? r.data?.error ?? ''} approved=${r.data?.approved === true}`;
+      bPart = `B 새 기기 ${st(fresh)} → 승인 값 넣은 요청 ${forged.status} → 승인 요청 ${st(asked)} → 다시 확인 ${st(after)}`;
+      await logout(app, b);
+    }
+  }
+  return [{ attackId: 'device_approval_gate',
+    expected: '설치형 앱 manifest·오프라인 안내만 캐시하는 서비스 워커. 기기 상태는 로그인 필요, 승인 요청·설치 표시·요청 값으로는 승인되지 않음(승인 전 자료 없음)',
+    observed: `manifest ${manifest.status} 이름 ${manifest.data?.name ?? '-'} · sw.js ${sw.status} ${swOnlyOffline ? '오프라인 안내만 캐시' : '캐시 대상 확인 필요'} · 비로그인 기기 상태 ${anon.status} / ${bPart}` }];
 }
 
 export async function runAttackChecks(config) {
@@ -538,7 +581,7 @@ export async function runAttackChecks(config) {
     ];
   }
 
-  if (config.step >= 5 && config.step <= 10) {
+  if (config.step >= 5 && config.step <= 11) {
     // 실제로 보낸 요청의 결과만 적습니다. 메모 본문·토큰·이메일은 기록하지 않습니다.
     if (typeof config.originalApiUrl !== 'string' || !config.originalApiUrl.startsWith('https://')) {
       throw new Error('aleph.config.json의 originalApiUrl을 먼저 넣어 주세요.');
@@ -582,8 +625,9 @@ export async function runAttackChecks(config) {
       ...(config.step >= 6 ? await deviceChecks() : []),
       ...(config.step >= 7 ? await stepUpChecks({ compact: config.step >= 9 }) : []),
       ...(config.step >= 8 ? await zoneChecks(app, { compact: config.step >= 10, crossObserved: restored?.crossZone }) : []),
-      ...(config.step >= 9 ? await detectChecks() : []),
+      ...(config.step >= 9 ? await detectChecks({ compact: config.step >= 11 }) : []),
       ...(restored ? restored.last : []),
+      ...(config.step >= 11 ? await deviceGateChecks(app) : []),
     ]);
   }
 
