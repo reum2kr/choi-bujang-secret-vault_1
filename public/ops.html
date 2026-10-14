@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>탈환 작전실 | 최부장 비밀 자료실</title>
+  <meta name="theme-color" content="#101a28">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #101a28; color: #ecf4ff; }
+    main { max-width: 820px; margin: 0 auto; padding: 40px 18px 64px; }
+    .eyebrow { color: #8ad8df; font-size: 14px; font-weight: 700; letter-spacing: .08em; }
+    h1 { margin: 12px 0; font-size: clamp(28px, 6vw, 42px); }
+    h2 { margin: 0 0 10px; font-size: 19px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    p, li { color: #bfd0e5; line-height: 1.7; }
+    a { color: #8ad8df; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 22px; }
+    .card { padding: 18px; border: 1px solid #51667c; border-radius: 14px; background: #16243a; }
+    dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; }
+    dt { color: #8ea3bb; font-size: 14px; }
+    dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .src { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
+    .server_record { color: #9fe3b0; } .code { color: #8ad8df; } .virtual { color: #f5d38a; }
+    .not_run, .unavailable { color: #ffb4c0; }
+    .meta { font-size: 14px; color: #8ea3bb; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="eyebrow">BYTE BACK · 12단계 탈환 작전실</div>
+    <h1>탈환 작전실</h1>
+    <p>아래 수치는 서버가 이 화면을 열 때 실제로 읽은 서버 기록·배포 코드·가상 입력에서만 가져옵니다. 출처를 함께 적고, 읽지 못한 값은 「-」로 둡니다. 이 화면의 표시는 통과 근거가 아닙니다. 메모 본문과 사용자 정보는 보여 주지 않습니다.</p>
+    <p class="meta">출처 표시: <span class="src server_record">서버 기록</span> <span class="src code">코드 검증</span> <span class="src virtual">가상 입력</span> <span class="src not_run">미실행</span> · <span id="checked">읽는 중…</span></p>
+
+    <div class="grid">
+      <section class="card" aria-labelledby="t-rules">
+        <h2 id="t-rules">판정기 규칙 <span class="src" data-src="rules">-</span></h2>
+        <dl>
+          <dt>규칙 수</dt><dd data-k="rules.ruleCount">-</dd>
+          <dt>규칙 이름</dt><dd data-k="rules.ruleIds">-</dd>
+          <dt>안전 정책 사본</dt><dd data-k="rules.policy">-</dd>
+        </dl>
+      </section>
+      <section class="card" aria-labelledby="t-detect">
+        <h2 id="t-detect">탐지 사건 <span class="src" data-src="detection">-</span></h2>
+        <dl>
+          <dt>가상 사례</dt><dd data-k="detection.cases">-</dd>
+          <dt>observe</dt><dd data-k="detection.observe">-</dd>
+          <dt>회수 제안</dt><dd data-k="detection.proposeRevocation">-</dd>
+          <dt>실제 사건 전달</dt><dd data-k="detection.liveEvents">-</dd>
+        </dl>
+      </section>
+      <section class="card" aria-labelledby="t-revoke">
+        <h2 id="t-revoke">회수 상태 <span class="src" data-src="revocation">-</span></h2>
+        <dl>
+          <dt>등록 기기</dt><dd data-k="revocation.total">-</dd>
+          <dt>승인</dt><dd data-k="revocation.approved">-</dd>
+          <dt>승인 대기</dt><dd data-k="revocation.pending">-</dd>
+          <dt>승인 취소(회수)</dt><dd data-k="revocation.revoked">-</dd>
+          <dt>엔진 회수 집행</dt><dd data-k="revocation.engineRevocation">-</dd>
+        </dl>
+      </section>
+      <section class="card" aria-labelledby="t-restore">
+        <h2 id="t-restore">복구 버전 <span class="src" data-src="restore">-</span></h2>
+        <dl>
+          <dt>메모 사본 버전</dt><dd data-k="restore.noteBackupLabel">-</dd>
+          <dt>정책 사본 버전</dt><dd data-k="restore.policyVersion">-</dd>
+          <dt>복원 감사 기록</dt><dd data-k="restore.audit">-</dd>
+          <dt>마지막 복원 기록</dt><dd data-k="restore.lastAt">-</dd>
+          <dt>정책 복원 시험</dt><dd data-k="restore.policyTest">-</dd>
+        </dl>
+      </section>
+    </div>
+
+    <p class="meta">서버 기록과 맞춰 보기: Supabase SQL Editor에서 <code>supabase/12-ops-check.sql</code>을 실행하면 같은 개수가 나옵니다. 1~11단계 요청 표는 <code>npm run ops:table</code>로 만듭니다. <a href="/">자료실로 돌아가기</a></p>
+  </main>
+  <script type="module">
+    // 화면은 서버 요약(GET /api/ops)만 표시합니다. 값을 꾸미거나 성공 문구로 바꾸지 않습니다.
+    const NAMES = { server_record: '서버 기록', code: '코드 검증', virtual: '가상 입력', not_run: '미실행', unavailable: '읽지 못함' };
+    const put = (key, value) => {
+      const el = document.querySelector(`[data-k="${key}"]`);
+      if (el) el.textContent = value === null || value === undefined || value === '' ? '-' : String(value);
+    };
+    const time = (iso) => (iso ? new Date(iso).toLocaleString() : null);
+    const runState = (v) => (v === 'not_run' ? '미실행' : v);
+    try {
+      const response = await fetch('/api/ops', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const o = await response.json();
+      for (const el of document.querySelectorAll('[data-src]')) {
+        const src = o[el.dataset.src]?.source ?? 'unavailable';
+        el.textContent = NAMES[src] ?? src;
+        el.className = `src ${src}`;
+      }
+      document.querySelector('#checked').textContent = `서버가 읽은 시각 ${time(o.checkedAt)}`;
+      put('rules.ruleCount', o.rules?.ruleCount);
+      put('rules.ruleIds', o.rules?.ruleIds?.join(', '));
+      put('rules.policy', o.rules?.policyVersion ? `${o.rules.policyVersion} · 정책 버전 ${o.rules.policyRevision} · 고정 지문 ${o.rules.policyVerified ? '일치' : '불일치'}` : '읽지 못함');
+      put('detection.cases', o.detection?.cases);
+      put('detection.observe', o.detection?.observe);
+      put('detection.proposeRevocation', o.detection?.proposeRevocation);
+      put('detection.liveEvents', runState(o.detection?.liveEvents));
+      const d = o.revocation?.devices;
+      put('revocation.total', d?.total); put('revocation.approved', d?.approved);
+      put('revocation.pending', d?.pending); put('revocation.revoked', d?.revoked);
+      put('revocation.engineRevocation', runState(o.revocation?.engineRevocation));
+      put('restore.noteBackupLabel', o.restore?.noteBackupLabel);
+      put('restore.policyVersion', o.restore?.policyVersion);
+      const a = o.restore?.restoreAudit;
+      put('restore.audit', a ? `${a.total}건${a.total ? ` (${Object.entries(a.byResult).map(([k, v]) => `${k} ${v}`).join(', ')})` : ''}` : null);
+      put('restore.lastAt', time(a?.lastAt));
+      const p = o.restore?.policyRestoreTest;
+      put('restore.policyTest', p ? `${p.total}건 · 마지막 ${p.lastResult ?? '-'} · ${time(p.lastAt) ?? '-'}` : null);
+    } catch (error) {
+      document.querySelector('#checked').textContent = `서버 요약을 읽지 못했습니다(${error.message}). 수치를 표시하지 않습니다.`;
+    }
+  </script>
+</body>
+</html>
