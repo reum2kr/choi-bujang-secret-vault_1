@@ -66,3 +66,20 @@
 2026-10-14T06:01:12.126Z ALERT persistence ps-14 src=203.0.113.49 conf=0.6 startup_folder_change 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
 2026-10-14T06:01:12.126Z ALERT persistence ps-15 src=192.0.2.53 conf=0.64 unfamiliar_scheduled_task 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
 2026-10-14T06:01:12.126Z ALERT persistence ps-16 src=198.51.100.53 conf=0.56 unsigned_new_service 미달: 서명 없음·임시 폴더·기준선 밖 신호가 뚜렷하지 않아 알림만
+2026-10-14T06:12:50.683Z BLOCK privilege pv-01 user=user01 src=203.0.113.11 conf=0.93 세션 회수 admin_group_addition (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-02 user=user01 src=203.0.113.11 conf=0.93 세션 회수 unfamiliar_admin_command (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-03 user=user02 src=198.51.100.11 conf=0.97 세션 회수 unfamiliar_admin_command + off_hours_privilege_use (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-04 user=user03 src=192.0.2.11 conf=1 세션 회수 admin_group_addition + unfamiliar_admin_command + group_add_then_admin_command (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-05 user=user04 src=203.0.113.17 conf=0.93 세션 회수 admin_group_addition (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-06 user=user05 src=198.51.100.17 conf=0.93 세션 회수 unfamiliar_admin_command (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-07 user=user06 src=192.0.2.17 conf=1 세션 회수 admin_group_addition + off_hours_privilege_use + group_add_then_admin_command (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-08 user=user07 src=203.0.113.27 conf=0.93 세션 회수 unfamiliar_admin_command (T1068·T1078)
+2026-10-14T06:12:50.683Z BLOCK privilege pv-09 user=user08 src=198.51.100.27 conf=0.93 세션 회수 admin_group_addition (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-10 user=user01 src=192.0.2.54 conf=0.6 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-11 user=user02 src=198.51.100.54 conf=0.64 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-12 user=user03 src=203.0.113.54 conf=0.56 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-13 user=user04 src=192.0.2.55 conf=0.6 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-14 user=user05 src=198.51.100.55 conf=0.68 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-15 user=user06 src=203.0.113.55 conf=0.6 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-16 user=user07 src=192.0.2.56 conf=0.64 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)
+2026-10-14T06:12:50.683Z ALERT privilege pv-17 user=user08 src=198.51.100.56 conf=0.56 privilege_signal_without_escalation: 상승·낯선 사용이 확인되지 않아 알림만 (T1068·T1078)

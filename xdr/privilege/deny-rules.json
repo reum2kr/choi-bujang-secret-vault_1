@@ -1,0 +1,136 @@
+{
+  "schema": "aleph.xdr.deny-rules.v1",
+  "moduleKey": "privilege",
+  "generatedAt": "2026-10-14T06:12:50.683Z",
+  "rules": [
+    {
+      "ruleId": "xdr.privilege.revoke_session.user01.203_0_113_11",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user01",
+        "srcip": "203.0.113.11"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-01",
+        "pv-02"
+      ],
+      "confidence": 0.93,
+      "reason": "admin_group_addition (T1068·T1078)"
+    },
+    {
+      "ruleId": "xdr.privilege.revoke_session.user02.198_51_100_11",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user02",
+        "srcip": "198.51.100.11"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-03"
+      ],
+      "confidence": 0.97,
+      "reason": "unfamiliar_admin_command + off_hours_privilege_use (T1068·T1078)"
+    },
+    {
+      "ruleId": "xdr.privilege.revoke_session.user03.192_0_2_11",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user03",
+        "srcip": "192.0.2.11"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-04"
+      ],
+      "confidence": 1,
+      "reason": "admin_group_addition + unfamiliar_admin_command + group_add_then_admin_command (T1068·T1078)"
+    },
+    {
+      "ruleId": "xdr.privilege.revoke_session.user04.203_0_113_17",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user04",
+        "srcip": "203.0.113.17"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-05"
+      ],
+      "confidence": 0.93,
+      "reason": "admin_group_addition (T1068·T1078)"
+    },
+    {
+      "ruleId": "xdr.privilege.revoke_session.user05.198_51_100_17",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user05",
+        "srcip": "198.51.100.17"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-06"
+      ],
+      "confidence": 0.93,
+      "reason": "unfamiliar_admin_command (T1068·T1078)"
+    },
+    {
+      "ruleId": "xdr.privilege.revoke_session.user06.192_0_2_17",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user06",
+        "srcip": "192.0.2.17"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-07"
+      ],
+      "confidence": 1,
+      "reason": "admin_group_addition + off_hours_privilege_use + group_add_then_admin_command (T1068·T1078)"
+    },
+    {
+      "ruleId": "xdr.privilege.revoke_session.user07.203_0_113_27",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user07",
+        "srcip": "203.0.113.27"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-08"
+      ],
+      "confidence": 0.93,
+      "reason": "unfamiliar_admin_command (T1068·T1078)"
+    },
+    {
+      "ruleId": "xdr.privilege.revoke_session.user08.198_51_100_27",
+      "decision": "deny",
+      "action": "revoke_session",
+      "match": {
+        "srcuser": "user08",
+        "srcip": "198.51.100.27"
+      },
+      "createdAt": "2026-10-14T06:12:50.683Z",
+      "expiresAt": "2026-10-14T07:12:50.683Z",
+      "alertIds": [
+        "pv-09"
+      ],
+      "confidence": 0.93,
+      "reason": "admin_group_addition (T1068·T1078)"
+    }
+  ]
+}
