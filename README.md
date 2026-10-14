@@ -334,3 +334,97 @@
 - `step` 11. `allowedRoutes`·`restoreRoute`·`identityProvider`·`originalApiUrl`·`judgeIssuer`는 그대로입니다. 판정기 `RULE_IDS`도 10단계와 같은 8개입니다.
 - `src/attack-check.mjs`에 `device_approval_gate`를 더했습니다. 제출 점검 20개 한도 때문에 실제 회수 집행(미실행) 줄은 도플갱어 탐지 줄에 합쳤습니다. 심판 판정이 아닙니다.
 - 다시 실행하는 방법: SQL Editor에서 `supabase/11-devices.sql` → 로그인 → 「이 기기 승인 요청」 → SQL Editor에서 `select public.approve_vault_device('<요청 코드>');` → 「상태 다시 확인」 → `npm run bundle`
+
+## 12단계 기록: 탈환 작전실을 완성합니다
+
+### 제작 1: 탈환 작전실 (`/ops.html`, 서버 요약 `GET /api/ops`)
+
+- 작전실 화면은 서버 요약 `GET /api/ops`의 값만 표시합니다. 서버는 화면을 열 때마다 아래 네 가지를 새로 읽고, 항목마다 출처를 붙입니다.
+
+  | 항목 | 보여 주는 값 | 출처 |
+  |---|---|---|
+  | 판정기 규칙 | 규칙 수·규칙 이름(`src/decider.mjs`의 `RULE_IDS`), 안전 정책 사본 버전·정책 버전·고정 지문 일치 여부 | 코드 검증(배포된 코드를 이번 요청에서 읽어 검증) |
+  | 탐지 사건 | 고정된 가상 사건 4가지를 학생 탐지 규칙에 넣은 결과(observe·회수 제안 개수) / 실제 사건 전달 | 가상 입력 / 미실행 |
+  | 회수 상태 | 기기 등록부(`vault_devices`)의 승인·승인 대기·승인 취소(회수) 개수 / 엔진의 실제 회수 집행 | 서버 기록 / 미실행 |
+  | 복구 버전 | 메모 사본 버전(`pre-incident-10`), 정책 사본 버전(`zone-v10r2`), 복원 감사 기록(`restore_audit`) 결과별 개수와 마지막 시각, 정책 복원 시험(`notes_policy_audit`) 기록 수와 마지막 결과 | 서버 기록 |
+
+- 실제 API 응답에서 확인한 값과 미실행을 구분합니다. 서버 기록을 읽지 못하면 0으로 채우지 않고 「-」와 「읽지 못함」으로 둡니다.
+- 가상 메모 본문, 메모 제목, 사용자 ID, 이메일, 기기 지문, 토큰은 서버가 읽지도 돌려주지도 않습니다. 감사 기록은 결과 이름과 시각만 셉니다(가린 서버 기록).
+- 화면에는 성공 문구가 없고, 이 화면의 표시는 통과 근거가 아닙니다.
+- 화면의 수치와 서버 기록 맞춰 보기: Supabase SQL Editor에서 `supabase/12-ops-check.sql`(읽기만, 결과 이름별 개수와 마지막 시각만)을 실행해 「회수 상태」「복원 감사 기록」「정책 복원 시험」 숫자와 비교합니다.
+
+### 제작 2: 1~11단계 정상·금지 요청 표 (`npm run ops:table`)
+
+- `npm run ops:table`은 1~11단계의 정상·금지 요청을 실제 배포에 다시 보내고, 아래 열을 한 표로 만듭니다: 단계 · 점검 · 정상·금지 · 기대 결과 · 실제 API 결과 · 결과(기대대로/기대와 다름/미실행) · 요청(메서드·경로 → 응답 상태) · 요청 ID · 확인 시각.
+- 요청 ID는 배포가 응답에 붙인 `x-vercel-id`입니다. 요청마다 점검 이름·경로·응답 상태·요청 ID·시각을 남기고, 요청 본문·토큰·쿠키·쿼리 값은 남기지 않습니다.
+- 결과는 `artifacts/ops-table.md`, `artifacts/ops-table.json`에 씁니다(`artifacts/`는 커밋하지 않음). 표에 비밀값이나 연락처로 보이는 내용이 있으면 쓰지 않고 멈춥니다.
+- 요청을 보내지 못했거나 계정 비밀값이 없어 보내지 않은 점검은 「미실행」으로 둡니다. 판정기·탐지 규칙의 결과는 배포의 `GET /api/ops?case=decider|detect`(고정된 가상 입력, `synthetic: true`)에서 받은 응답이며, 실제 엔진의 기기 검증·재로그인 흐름·회수 집행은 미실행입니다.
+- 이 표는 이 저장소의 직접 점검입니다. 심판의 41종 공격 시험은 이 표로 통과 처리하지 않습니다. 41종의 결과는 심판 판정으로만 확인합니다.
+
+### 제작 3: 설치·실행·중지·복구 안내 (검사한 커밋 기준)
+
+검사한 커밋은 제출 묶음 `artifacts/submission.json`의 `commit`(배포 주소 `/aleph.json`의 `commit`과 같음)입니다. 아래 절차는 모두 그 커밋을 기준으로 합니다.
+
+#### 출처: 학생 몫과 제공 엔진
+
+| 출처 | 들어 있는 것 |
+|---|---|
+| 학생이 만든 것 | 판정기 `src/decider.mjs`, 탐지 규칙 `src/detect.mjs`, 가상 판정 점검 `src/rule-check.mjs`(`GET /api/ops?case=…`), 접속 앱·작전실 화면 `public/`(`index.html`·`ops.html`·`manifest.json`·`sw.js`·`offline.html`), 자료실 서버 함수 `api/`(메모·공지·복원·기기 승인·작전실 요약)와 `lib/`, DB 설정 `supabase/*.sql`, 정책 사본과 복원 도구 `policy/`·`scripts/policy-restore.mjs`, 메모 사본 검증 기록 `backup/`, 점검 코드 `src/attack-check.mjs`·`scripts/ops-table.mjs`, XDR 판정 `xdr/*/decide.mjs` |
+| 제공 엔진 | ALEPH SDP 엔진을 사용합니다. 로그인 세션 확인, 기기 등록 확인, 판정기 호출과 집행, 사건 전달과 접속 회수 집행, 엔진 감사 기록은 엔진이 맡습니다. 이 저장소에는 엔진 코드가 없습니다. |
+| 시작 틀(과정 제공) | 로그인 검사 `src/verify-login.mjs`, 배포 정보 `scripts/deployment-identity.mjs`·`scripts/build-public.mjs`, 제출 묶음 `scripts/bundle.mjs`(12단계에서 제작자 공개 표본의 형식에 맞춰 `runAttackChecks(배포 주소)`·`stage`·`result`·`checkedAt`을 반영), `docs/`, `package/` |
+| 외부 서비스 | Vercel(배포·서버 함수), Supabase(로그인·DB) |
+
+#### 구성 요소별 설치·실행·중지·복구
+
+| 구성 요소 | 설치 | 실행·확인 | 중지 | 복구 |
+|---|---|---|---|---|
+| 판정기 | 검사한 커밋을 받고 `npm install` | `npm run decider:test`, `npm run fixture:7`, 배포의 `/api/ops?case=decider` | 엔진 쪽 경로 허용을 끔(제공 엔진에서) | 시험 정책은 `npm run policy:diff` → `npm run policy:restore -- --confirm zone-v10r2`. 운영 판정기는 `git checkout <검사한 커밋> -- src/decider.mjs` 뒤 다시 배포 |
+| 탐지 규칙 | 같음 | `npm run detect:test`, 배포의 `/api/ops?case=detect` | 엔진의 사건 전달을 끔(제공 엔진에서) | `git checkout <검사한 커밋> -- src/detect.mjs` 뒤 다시 배포 |
+| 접속 앱 | Vercel에 저장소를 연결해 배포(`vercel.json`, 빌드 `npm run build`) | 배포 주소 `/` 로그인 → 「이 기기 승인 요청」 → SQL Editor에서 `approve_vault_device('<요청 코드>')` → 「상태 다시 확인」. 작전실은 `/ops.html` | Vercel에서 배포를 내리거나(Instant Rollback·프로젝트 일시 중지) 기기 승인을 `revoke_vault_device('<요청 코드>')`로 취소 | Vercel에서 검사한 커밋의 배포를 다시 운영(Promote)으로 지정 |
+| 자료실 | Supabase SQL Editor에서 차례로: `notes.sql` → `03-notes-uuid.sql` → `04-owners.sql` → `04-rls.sql` → `05-revoke-direct.sql` → `08-notices.sql` → `10-backup.sql` → `10-backup-on-create.sql` → `10-policy-backup.sql` → `10-policy-restore-test.sql` → `11-devices.sql` → `12-ops-grant.sql` | 로그인 뒤 메모 목록·작성·복원, `supabase/12-ops-check.sql`로 서버 기록 확인 | Vercel 배포를 내리거나 Supabase 프로젝트를 일시 중지 | 메모 한 건은 `POST /api/restore/notes/:id`(사본 검증 뒤 한 건만), RLS 시험 정책은 `notes_policy_restore('s4-rls-v1', true)` |
+
+#### 재현 순서
+
+1. `git clone https://github.com/reum2kr/choi-bujang-secret-vault_1` → `git checkout <검사한 커밋>` → `npm install`
+2. Supabase SQL Editor에서 위 「자료실」 순서대로 SQL을 실행합니다(`<A_EMAIL>`·`<B_EMAIL>` 자리는 SQL Editor 안에서만 바꾸고 파일에 적지 않음).
+3. Vercel 프로젝트 설정의 환경변수 입력란에 `SUPABASE_URL`, `SUPABASE_SECRET_KEY`를 직접 넣고 배포합니다.
+4. `npm run decider:test` → `npm run detect:test` → `npm run fixture:7` → `npm run policy:diff`
+5. (선택) GitHub Codespaces 비밀값 `ALEPH_B_EMAIL`·`ALEPH_B_PASSWORD`, `ALEPH_A_EMAIL`·`ALEPH_A_PASSWORD`를 등록합니다.
+6. `npm run ops:table`(1~11단계 요청 표) → `npm run bundle`(제출 묶음) → 배포 주소 `/ops.html`에서 작전실 확인
+
+비밀값(서버 전용 키, 계정 비밀번호, 토큰, 기기 ID)은 저장소·제출 묶음·요청 표에 넣지 않습니다. 값은 Vercel 환경변수와 Codespaces 비밀값 입력란에만 둡니다.
+
+### 확인 결과
+
+- 로컬 시험(2026-10-14, 가짜 DB 서버 + Chromium, 실제 배포 아님):
+  - 작전실 화면: 판정기 규칙 8개·안전 정책 사본 고정 지문 일치(코드 검증), 탐지 가상 사례 4건 중 observe 3·회수 제안 1(가상 입력), 실제 사건 전달·엔진 회수 집행은 「미실행」, 기기·감사 기록은 서버 기록 개수 표시. 성공 문구 없음, 메모 본문 없음.
+  - `npm run ops:table`: 점검 20개, HTTP 요청 56건, 응답마다 요청 ID와 확인 시각 기록.
+  - 실행기 방식(배포 주소만 넘김, 계정 비밀값 없음): 점검 20개, 형식 오류 0, 계정이 필요한 점검 5개는 「미실행」.
+- 실제 배포(커밋 `320c515`~`51ccbd3`)와 실제 Supabase에서 학생이 실행한 결과(2026-10-14, KST):
+  - 12:44~12:46 작전실 `/ops.html`: 판정기 규칙 8개·안전 정책 사본 `zone-v10r2`·정책 버전 1·고정 지문 일치(코드 검증) / 탐지 가상 사례 4건 중 observe 3·회수 제안 1, 실제 사건 전달 미실행(가상 입력) / 등록 기기 2(승인 1·승인 대기 1·승인 취소 0), 엔진 회수 집행 미실행(서버 기록) / 메모 사본 `pre-incident-10`, 복원 감사 기록 190건(restored 49, previewed 87, denied 1, stopped_not_in_verified_backup 35, stopped_backup_row_absent 6, stopped_confirm_mismatch 6, stopped_not_owner 6), 마지막 복원 기록 12:26:01, 정책 복원 시험 2건·마지막 pass(10-13 21:21:57)(서버 기록)
+    - 처음에는 「정책 복원 시험」을 서버 키가 읽지 못해 「-」로 표시했습니다. `supabase/12-ops-grant.sql`로 그 표에 읽기 권한만 준 뒤 위 값이 나왔습니다.
+  - 12:46~12:47 `supabase/12-ops-check.sql`로 서버 기록과 대조: ① `approved 1`·`pending 1` ② 결과별 개수 합계 190(위 화면과 같은 7가지 결과·개수), 마지막 `03:26:01 UTC`(= 12:26:01 KST) ③ `tests 2`·`last_result pass`·`12:21:57 UTC`(= 21:21:57 KST). 화면 수치와 서버 기록이 모두 일치했습니다.
+  - 12:48 `npm run ops:table`(Codespaces, B·A 비밀값 있음): 점검 20개 모두 기대대로(기대와 다름 0, 미실행 0), HTTP 요청 55건 중 54건에 Vercel 요청 ID(`x-vercel-id`)와 확인 시각 기록(나머지 1건은 Supabase 원본 직접 조회라 Vercel ID 없음). 각 줄 안의 실제 엔진 기기 검증·재로그인 흐름·회수 집행은 미실행으로 남겼습니다.
+
+### 41종 시험의 실행·미실행 구분
+
+- 실행함(이 저장소의 직접 점검, 위 표): 1~11단계 정상·금지 요청 20개 점검(HTTP 요청 55건). 결과는 실측 응답 상태와 요청 ID로 남습니다.
+- 가상 입력으로만 실행함: 6~9단계 판정기·탐지 규칙(`GET /api/ops?case=…`, `synthetic: true`). 실제 공격 차단 결과로 세지 않습니다.
+- 미실행: 제공 엔진이 집행하는 실제 기기 검증, 실제 재로그인 흐름, 사건 전달과 접속 회수 집행.
+- 심판의 41종 공격 시험은 이 저장소에서 통과 처리하지 않습니다. 41종의 실행 결과는 심판 판정으로만 확인합니다.
+
+## 12단계 저장점
+
+- `step` 12. `allowedRoutes`·`restoreRoute`·`identityProvider`·`originalApiUrl`·`judgeIssuer`는 그대로입니다. 판정기 `RULE_IDS`도 같은 8개입니다.
+- 새 파일·경로: `GET /api/ops?case=policy`(정책 사본 서버 검증), `supabase/12-ops-grant.sql`(작전실이 정책 복원 시험 기록을 읽도록 서버 키에 읽기 권한만), `public/ops.html`, `api/ops/index.js`(작전실 요약 `GET /api/ops`와 가상 판정 점검 `GET /api/ops?case=decider|detect`), `src/rule-check.mjs`, `scripts/ops-table.mjs`, `supabase/12-ops-check.sql`. `package.json`에 `ops:table`을 더했습니다.
+- Vercel Hobby 요금제의 서버 함수 12개 한도에 맞추려고 기기 승인 두 경로를 한 파일 `api/device/[action].js`로 합쳤습니다(주소 `/api/device/status`·`/api/device/request`와 동작은 그대로).
+- 심판 실행기에서 `npm run bundle`이 `runner_import_failed`로 멈춘 것을 고쳤습니다(첫 제출, 커밋 `3386988`). 실행기는 점검 코드 안에서 다른 파일·모듈을 불러오지 못하게 막는데, 점검 코드가 설정 파일·정책 도구·Node 내장 모듈을 불러오고 있었습니다. 이제 `src/attack-check.mjs`는 아무것도 import하지 않습니다.
+  - 설정은 배포의 `/aleph.json`, 안전 정책 사본 검증은 배포 서버의 `GET /api/ops?case=policy`(사본을 다시 읽어 고정 지문 검증, 변조·없는 사본에서 멈추는지 같은 함수로 확인), 해시는 내장 Web Crypto로 계산합니다.
+  - 복원 경로의 응답에는 검증 기록의 소유자 지문(`backupOwnerSha256`, 해시값)을 함께 돌려줘, 점검 코드가 저장소 파일 없이 사본 값과 비교합니다.
+- 두 번째 제출(커밋 `56a349b`)에서 심판이 알려 준 격리 환경 규칙에 맞췄습니다: 쓸 수 있는 모듈은 `node:fs`·`node:path`·`node:url`·`node:child_process`(git 읽기)·`node:crypto`뿐이고, 요청은 공개 HTTPS 주소에 GET·HEAD만 보낼 수 있습니다.
+  - 제출 묶음(`npm run bundle`은 `runAttackChecks(배포 주소)`로 부름)은 읽기 요청(GET·HEAD)만 보냅니다. 로그인·삭제·수정·복원처럼 쓰기 요청이 필요한 점검(B 복원 연습 2개, B→A 교차 2개, 복구 뒤 재시험, B 기기 승인 요청)은 보내지 않고 `not_run`으로 남깁니다. 로그인 없는 복원 요청 거부는 같은 복원 경로를 GET(실행 전 미리보기)으로 보내 401을 확인합니다.
+  - 쓰기 요청이 필요한 점검은 학생이 Codespaces에서 `npm run ops:table`로 직접 실행하고, 그 결과(12:48 실행, 20개 모두 기대대로)를 위 「확인 결과」에 적었습니다.
+  - 확인: 로컬에서 점검 코드 안의 import를 모두 막고 GET·HEAD 밖의 요청이면 실패하는 실행 환경을 만들어 돌렸습니다. 쓰기 요청 0건, 점검 20개(기대대로 15·미실행 5), 형식 오류 0. `npm run ops:table`은 그대로 쓰기 요청까지 보내 20개 모두 기대대로였습니다.
+- 세 번째 제출(커밋 `9d31cbd`)에서 「실행 기록 대조」가 실행한 점검 15개의 요청 기록을 찾지 못했습니다. 제작자 표본처럼 요청마다 `alephEvidence: { caseId: <attackId>, requestKey: 'read' }`(같은 점검의 두 번째 요청부터 `read-2`…)를 붙이고, 판정기·탐지 가상 점검도 한 응답을 여러 점검이 나눠 쓰지 않고 점검마다 자기 이름으로 요청을 따로 보내도록 고쳤습니다. 설정을 읽는 `/aleph.json` 요청에는 점검 표시를 붙이지 않습니다. 실행한 점검의 `observed`에는 응답 상태(`HTTP 200` 등)를 적습니다.
+  - 확인: 로컬 실행기 흉내에서 실행한 점검 15개 모두 자기 이름의 요청 기록이 있고, 미실행 5개는 요청이 없으며, 요청 키 형식 오류·점검 밖 이름 0건이었습니다.
+- `src/attack-check.mjs`: 배포 주소만 받아도 실행되고, 항목마다 `stage`·`result`(`blocked`·`breached`·`not_run`)를 붙입니다. 6~9단계 가상 판정은 배포의 `/api/ops?case=…` 응답으로 받습니다. 제출 점검 20개 한도 때문에 실제 재로그인 흐름(미실행)은 복합 이상 줄에 합치고 `ops_room_summary`를 더했습니다. 심판 판정이 아닙니다.
