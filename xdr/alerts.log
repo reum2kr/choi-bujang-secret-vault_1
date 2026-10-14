@@ -34,3 +34,19 @@
 2026-10-09T15:42:16.515Z ALERT web-injection wi-15 src=192.0.2.42 path=/search conf=0.56 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
 2026-10-09T15:42:16.515Z ALERT web-injection wi-16 src=198.51.100.42 path=/notes conf=0.62 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
 2026-10-09T15:42:16.515Z ALERT web-injection wi-17 src=203.0.113.43 path=/search conf=0.56 repeated_injection_same_source 미달: T1190 의심 경보지만 주입 표기·반복이 없어 알림만
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-01 src=203.0.113.10 path=- conf=0.94 jndi_lookup_in_header (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-02 src=203.0.113.10 path=/search conf=0.94 jndi_lookup_in_params (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-03 src=198.51.100.16 path=/login conf=0.97 jndi_lookup_in_params + repeated_jndi_same_source (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-04 src=192.0.2.16 path=- conf=0.97 jndi_lookup_in_header + repeated_jndi_same_source (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-05 src=203.0.113.24 path=/health conf=0.96 jndi_lookup_in_params + known_scanner_trace (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-06 src=198.51.100.24 path=/api/notes conf=0.97 jndi_lookup_in_params + repeated_jndi_same_source (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-07 src=192.0.2.24 path=/login conf=0.94 jndi_lookup_in_header (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z BLOCK known-cve kc-08 src=203.0.113.31 path=/search conf=0.97 jndi_lookup_in_header + jndi_lookup_in_params + repeated_jndi_same_source (CVE-2021-44228, T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-09 src=192.0.2.45 path=/search conf=0.58 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-10 src=198.51.100.45 path=/notes conf=0.55 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-11 src=203.0.113.45 path=/docs/cve-list conf=0.61 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-12 src=192.0.2.46 path=- conf=0.58 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-13 src=198.51.100.46 path=/tools/class-check conf=0.55 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-14 src=203.0.113.46 path=/search conf=0.61 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-15 src=192.0.2.47 path=/search conf=0.58 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)
+2026-10-14T05:50:27.090Z ALERT known-cve kc-16 src=198.51.100.47 path=/search conf=0.67 cve_mention_without_lookup: 완전한 원격 조회 구문이 없어 알림만 (T1190)

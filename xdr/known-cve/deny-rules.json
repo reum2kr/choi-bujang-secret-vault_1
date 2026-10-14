@@ -1,0 +1,106 @@
+{
+  "schema": "aleph.xdr.deny-rules.v1",
+  "moduleKey": "known-cve",
+  "generatedAt": "2026-10-14T05:50:27.090Z",
+  "rules": [
+    {
+      "ruleId": "xdr.known_cve.deny_source.203_0_113_10",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.10"
+      },
+      "createdAt": "2026-10-14T05:50:27.090Z",
+      "expiresAt": "2026-10-14T06:50:27.090Z",
+      "alertIds": [
+        "kc-01",
+        "kc-02"
+      ],
+      "confidence": 0.94,
+      "reason": "jndi_lookup_in_header (CVE-2021-44228, T1190)"
+    },
+    {
+      "ruleId": "xdr.known_cve.deny_source.198_51_100_16",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.16"
+      },
+      "createdAt": "2026-10-14T05:50:27.090Z",
+      "expiresAt": "2026-10-14T06:50:27.090Z",
+      "alertIds": [
+        "kc-03"
+      ],
+      "confidence": 0.97,
+      "reason": "jndi_lookup_in_params + repeated_jndi_same_source (CVE-2021-44228, T1190)"
+    },
+    {
+      "ruleId": "xdr.known_cve.deny_source.192_0_2_16",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.16"
+      },
+      "createdAt": "2026-10-14T05:50:27.090Z",
+      "expiresAt": "2026-10-14T06:50:27.090Z",
+      "alertIds": [
+        "kc-04"
+      ],
+      "confidence": 0.97,
+      "reason": "jndi_lookup_in_header + repeated_jndi_same_source (CVE-2021-44228, T1190)"
+    },
+    {
+      "ruleId": "xdr.known_cve.deny_source.203_0_113_24",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.24"
+      },
+      "createdAt": "2026-10-14T05:50:27.090Z",
+      "expiresAt": "2026-10-14T06:50:27.090Z",
+      "alertIds": [
+        "kc-05"
+      ],
+      "confidence": 0.96,
+      "reason": "jndi_lookup_in_params + known_scanner_trace (CVE-2021-44228, T1190)"
+    },
+    {
+      "ruleId": "xdr.known_cve.deny_source.198_51_100_24",
+      "decision": "deny",
+      "match": {
+        "srcip": "198.51.100.24"
+      },
+      "createdAt": "2026-10-14T05:50:27.090Z",
+      "expiresAt": "2026-10-14T06:50:27.090Z",
+      "alertIds": [
+        "kc-06"
+      ],
+      "confidence": 0.97,
+      "reason": "jndi_lookup_in_params + repeated_jndi_same_source (CVE-2021-44228, T1190)"
+    },
+    {
+      "ruleId": "xdr.known_cve.deny_source.192_0_2_24",
+      "decision": "deny",
+      "match": {
+        "srcip": "192.0.2.24"
+      },
+      "createdAt": "2026-10-14T05:50:27.090Z",
+      "expiresAt": "2026-10-14T06:50:27.090Z",
+      "alertIds": [
+        "kc-07"
+      ],
+      "confidence": 0.94,
+      "reason": "jndi_lookup_in_header (CVE-2021-44228, T1190)"
+    },
+    {
+      "ruleId": "xdr.known_cve.deny_source.203_0_113_31",
+      "decision": "deny",
+      "match": {
+        "srcip": "203.0.113.31"
+      },
+      "createdAt": "2026-10-14T05:50:27.090Z",
+      "expiresAt": "2026-10-14T06:50:27.090Z",
+      "alertIds": [
+        "kc-08"
+      ],
+      "confidence": 0.97,
+      "reason": "jndi_lookup_in_header + jndi_lookup_in_params + repeated_jndi_same_source (CVE-2021-44228, T1190)"
+    }
+  ]
+}

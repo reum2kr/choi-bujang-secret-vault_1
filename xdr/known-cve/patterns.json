@@ -1,0 +1,38 @@
+{
+  "schema": "aleph.xdr.patterns.v1",
+  "moduleKey": "known-cve",
+  "technique": "MITRE ATT&CK T1190 Exploit Public-Facing Application",
+  "cve": "CVE-2021-44228 (Log4Shell)",
+  "patterns": [
+    {
+      "name": "jndi_lookup_in_header",
+      "technique": "T1190",
+      "condition": "요청 머리글(useragent·referer 등) 안에 ${jndi:<ldap|ldaps|rmi|dns|iiop|corba|nds|http>:// 형태의 완전한 원격 조회 구문이 있음",
+      "evidence": "CVE-2021-44228: 로그에 남는 머리글 값의 ${jndi:ldap://…} 조회 구문을 Log4j 가 해석해 원격 코드를 불러오며, 이는 MITRE ATT&CK T1190(공개 앱 악용)에 해당한다."
+    },
+    {
+      "name": "jndi_lookup_in_params",
+      "technique": "T1190",
+      "condition": "요청 주소의 인자(? 뒤, URL 인코딩을 풀어서) 안에 ${jndi:<프로토콜>:// 형태의 완전한 원격 조회 구문이 있음",
+      "evidence": "CVE-2021-44228: 검색어·로그인 인자처럼 로그에 기록되는 입력 칸에 같은 조회 구문을 넣어도 원격 조회가 일어나므로 T1190 악용 형태다."
+    },
+    {
+      "name": "known_scanner_trace",
+      "technique": "T1190",
+      "condition": "머리글이나 설명에 알려진 취약점 점검 도구의 흔적(nuclei·nikto·sqlmap·masscan·zgrab 등의 이름 또는 '알려진 취약점 점검 흔적' 표기)이 있음",
+      "evidence": "MITRE ATT&CK T1190·T1595.002: 공격자는 공개 앱 악용 전에 알려진 취약점 점검 도구로 대상을 훑으며, 이 흔적만으로는 공격 성공을 뜻하지 않아 조회 구문과 함께일 때만 차단 근거를 더한다."
+    },
+    {
+      "name": "repeated_jndi_same_source",
+      "technique": "T1190",
+      "condition": "같은 출발 주소에서 원격 조회 구문이 든 요청이 여러 번(count 2 이상) 반복되거나 여러 머리글·인자에 동시에 있음",
+      "evidence": "CVE-2021-44228 대량 악용 시기에 공격자는 같은 주소에서 머리글·인자를 바꿔 가며 조회 구문을 반복해 보냈다(T1190). 반복은 오입력이 아니라는 근거를 더한다."
+    },
+    {
+      "name": "cve_mention_without_lookup",
+      "technique": "T1190",
+      "condition": "취약점 이름(CVE-2021-44228)·jndi 단어·잘린 조회 조각·점검 도구와 비슷한 이름만 있고 완전한 ${jndi:<프로토콜>:// 구문은 없음",
+      "evidence": "CVE-2021-44228 악용에는 완전한 조회 구문이 필요하므로, 이름이나 조각만 있는 요청은 T1190 의심으로 알림만 하고 막지 않는다."
+    }
+  ]
+}
