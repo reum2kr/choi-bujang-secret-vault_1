@@ -172,10 +172,88 @@ function renderIdentityView(input) {
   return root;
 }
 
+// ---------- 14단계 · renderDecision: 선택한 업무 앱 한 개의 접근 판정과 이유 ----------
+// 입력: { status, mode, data?, error?, appId } — status: idle(요청 전)·loading(요청 중)·ok(판정 수신)·error(요청 실패)
+//       data: { appId, decision, reason, checkedAt }, decision: allow·deny·challenge·unknown
+// 판정(ok)과 요청 실패(error)를 서로 다른 문구로 보여 줍니다. 요청 실패·확인 불가는 허용도 거부도 아닙니다.
+// 이 표시는 선택한 앱 한 개의 판정이며, 전체 업무 앱 권한 목록을 조회하는 기능이 아닙니다.
+const DECISIONS = {
+  allow: { text: '접근 허용', allowed: true, note: '정책상 접근이 허용됐습니다. 실제 앱 접속 성공을 보장하지는 않습니다.' },
+  deny: { text: '접근 거부', allowed: false, note: '정책상 접근이 거부됐습니다.' },
+  challenge: { text: '추가 인증 또는 확인 필요', allowed: false, note: '추가 인증 또는 확인이 끝나기 전에는 허용되지 않습니다. 이 앱이 추가 인증을 대신 수행하지 않습니다.' },
+  unknown: { text: '판정 확인 불가', allowed: false, note: '판정을 확인할 수 없어 허용되지 않음으로 다룹니다.' },
+};
+
+function formatCheckedAt(value) {
+  const raw = textOf(value);
+  if (!raw) return '판정 시각 정보 없음';
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? raw : `${date.toLocaleString('ko-KR')} (${raw})`;
+}
+
+function decisionBox(text, kind, code, role) {
+  return node('p', text, { className: `state state-${kind}`, role, 'data-student-decision-state': code });
+}
+
+function renderDecisionView(input) {
+  const { status, error } = input ?? {};
+  const data = input?.data ?? null;
+  const requestedApp = textOf(input?.appId);
+  const root = node('div', null, { 'data-student': 'decision', 'aria-label': '업무 앱 접근 판정' });
+  const app = textOf(data?.appId) ?? requestedApp;
+  root.append(node('p', `대상 업무 앱: ${app ? `ID ${app}` : '선택한 앱 없음'}`, { 'data-student-app-id': app ?? '' }));
+  const mode = modeLine(input, '판정');
+  if (mode) root.append(mode);
+
+  if (status === 'idle' || status === undefined || status === null) {
+    root.setAttribute('data-student-decision', 'none');
+    root.append(decisionBox('요청 전: 업무 앱을 골라 접속을 요청하세요. 아직 받은 판정이 없습니다.', 'empty', 'idle', 'status'));
+    return root;
+  }
+  if (status === 'loading') {
+    root.setAttribute('data-student-decision', 'pending');
+    root.append(decisionBox('요청 중: 판정 확인 중입니다. 아직 판정이 아니며 허용되지 않음 상태입니다.', 'loading', 'loading', 'status'));
+    return root;
+  }
+  if (status === 'error') {
+    const code = textOf(error?.code);
+    const message = textOf(error?.message) ?? '서버 메시지 없음';
+    const unverified = code && UNVERIFIED_CODES.has(code);
+    root.setAttribute('data-student-decision', unverified ? 'unverified' : 'request-failed');
+    root.append(
+      decisionBox(`${unverified ? '확인 불가(응답 형식 불일치)' : '요청 실패'}: ${message}${code ? ` [${code}]` : ''}`, 'error', 'error', 'alert'),
+      node('p', '이것은 접근 거부(deny) 판정이 아니며, 접근 허용도 아닙니다. 판정을 받지 못했으므로 허용되지 않음 상태입니다. 다시 요청은 직접 눌러 주세요.', { className: 'muted' }),
+    );
+    return root;
+  }
+  if (status !== 'ok') {
+    root.setAttribute('data-student-decision', 'unknown');
+    root.append(decisionBox(`판정 확인 불가(unknown) · 받은 상태값: ${textOf(status) ?? '없음'} · 허용되지 않음`, 'empty', 'unknown', 'status'));
+    return root;
+  }
+
+  // 판정 수신(ok). 네 값이 아니거나 요청한 앱과 판정 대상이 다르면 확인 불가로 처리합니다(허용으로 보이지 않게).
+  const raw = textOf(data?.decision);
+  const sameApp = !requestedApp || !textOf(data?.appId) || textOf(data?.appId) === requestedApp;
+  const key = raw && Object.hasOwn(DECISIONS, raw) && sameApp ? raw : 'unknown';
+  const info = DECISIONS[key];
+  root.setAttribute('data-student-decision', key);
+  let headline = `${info.text}(${key})`;
+  if (key === 'unknown' && raw && raw !== 'unknown') headline += ` · 받은 값: ${raw}`;
+  if (!sameApp) headline += ' · 요청한 앱과 판정 대상 앱이 다름';
+  root.append(decisionBox(info.allowed ? headline : `${headline} · 허용되지 않음`, info.allowed ? 'ok' : key === 'deny' ? 'error' : 'empty', key, 'status'));
+  root.append(node('p', info.note, { className: 'muted' }));
+  const list = node('dl');
+  row(list, '판정 이유', node('span', textOf(data?.reason) ?? '판정 이유 정보 없음', { 'data-student-decision-reason': '' }));
+  row(list, '판정 시각', node('span', formatCheckedAt(data?.checkedAt), { 'data-student-decision-checked-at': textOf(data?.checkedAt) ?? '' }));
+  root.append(list);
+  return root;
+}
+
 export function createStudentView() {
   return {
     renderIdentity(input) { return renderIdentityView(input); },
-    renderDecision() { return '학생 구현 대기: 서버의 판정과 이유를 연결하세요.'; },
+    renderDecision(input) { return renderDecisionView(input); },
     renderEvents() { return '학생 구현 대기: 본인 접속·XDR 기록을 연결하세요.'; },
     renderStatus() { return '학생 구현 대기: 기기·세션·알림과 연결 점검 상태를 구분하세요.'; },
     renderVulnerabilities() { return '학생 구현 대기: 정확한 설치 버전·OSV 출처·조회 시각·부분 결과·조회 실패를 구분하세요.'; },
