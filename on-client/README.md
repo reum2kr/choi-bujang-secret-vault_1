@@ -25,3 +25,13 @@ npm start도 같은 서버를 켭니다. 기본 실행은 실제 회사 시스�
 - 오류 코드별 해결: docs/CONNECTION_TROUBLESHOOT.md
 - 시작 틀 업데이트(내 파일 보존): docs/STARTER_UPDATE.md
 - 실제 회사 시스템(SDP)·앱 안 AI 연결은 담당자가 따로 안내할 때만 씁니다: docs/SDP_HOST_CONNECTION.md, docs/AI_SETUP_GUIDE.md. 이 연결은 앱을 처음 켜고 13~16단계 화면을 만들거나 공식 AI 코드 판정을 받기 위한 전제 조건은 아닙니다. 다만 17단계 이후의 실제 연결과 새 환경 재현은 해당 단계의 기준에 따라 따로 확인합니다.
+
+## 학생 작성 부분 (장아름 · 13~21단계)
+
+이 아래는 학생이 덧붙인 부분입니다. 위의 제공 내용은 고치지 않았습니다.
+
+- **목적**: 직원 본인의 로그인·기기·세션, 업무 앱 접근 판정, 접속 기록·XDR 경보, AI 사건 설명, 조치 상태, 설치 패키지 취약점 조회를 상태별로 정확히 보여 주는 보안 Agent 「름셰브」.
+- **기능**: `student/extension.mjs`의 표시 함수 8개(renderIdentity·renderDecision·renderEvents·renderStatus·renderAiConnection·renderExplanation·renderAction·renderVulnerabilities). 값 표시만 하며 버튼·POST·자동 재요청은 없습니다.
+- **구성**: 브라우저 → 로컬 앱 서버(`src/server.mjs`, 127.0.0.1:5189) → 접근 제어·XDR 시스템(SDP) / 수업용 AI 게이트웨이 / OSV. 구성도(Mermaid·글)는 `docs/STUDENT_RUNBOOK.md` 5장.
+- **지원 환경과 버전**: Windows + PowerShell, Node.js 24.x(수업 기준 24.19.0, 실제 확인 24.22.0), 외부 npm 의존성 없음. 다른 운영체제는 확인하지 않았습니다.
+- **실행·종료·오류 대응·미확인 기능**: `docs/STUDENT_RUNBOOK.md`.
